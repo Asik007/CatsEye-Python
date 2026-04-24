@@ -50,8 +50,7 @@ def sclera_pipeline(input_path: str, overlay_path: str, mask_path: str, max_work
     def process(item):
         idx, frame = item
         eye_mask, overlay = process_eye_pipeline(image=frame)
-        mask = eye_mask.astype(np.uint8) * 255
-        return idx, overlay, mask
+        return idx, overlay, eye_mask
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process, item): item[0] for item in raw_frames}
@@ -123,7 +122,7 @@ def process_eye_pipeline(
 
     # --- 7) Create overlay (mask highlighted in red) ---
     
-    overlay = image.copy()
+    overlay = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # ✅ Rotate FIRST (when mask is still at its own small resolution, cheap op)
     # eye_mask_rotated = np.rot90(eye_mask)
@@ -135,7 +134,7 @@ def process_eye_pipeline(
         interpolation=cv2.INTER_NEAREST
     ).astype(bool)
 
-    print((~eye_mask_full).dtype, (~eye_mask_full).shape, np.sum(~eye_mask_full))
+    # print((~eye_mask_full).dtype, (~eye_mask_full).shape, np.sum(~eye_mask_full))
 
     overlay[eye_mask_full] = [255, 0, 0]  # Red overlay for eye region
 
@@ -146,27 +145,29 @@ def process_eye_pipeline(
 
     eye_mask_region1 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     inv_mask = ~eye_mask_full
-    eye_mask_region1[inv_mask] = [255,255,255]
+    eye_mask_region1[inv_mask] = [0,0,0]
     eye_mask_region2 = cv2.cvtColor(eye_mask_region1, cv2.COLOR_BGR2RGB)
 
 
-    return eye_mask_region2, overlay
 
 
-def show_results(image: np.ndarray, sclera_mask: np.ndarray, overlay: np.ndarray) -> None:
+    return eye_mask_region1, overlay
+
+
+def show_results(sclera_mask: np.ndarray, overlay: np.ndarray) -> None:
     plt.figure(figsize=(10, 8))
 
-    plt.subplot(2, 2, 1)
-    plt.imshow(image)
-    plt.title("Original")
-    plt.axis("off")
+    # plt.subplot(2, 2, 1)
+    # plt.imshow(image)
+    # plt.title("Original")
+    # plt.axis("off")
 
-    plt.subplot(2, 2, 2)
+    plt.subplot(2, 1, 1)
     plt.imshow(sclera_mask, cmap="gray")
     plt.title("Sclera mask")
     plt.axis("off")
 
-    plt.subplot(2, 2, 4)
+    plt.subplot(2, 1, 2)
     plt.imshow(overlay)
     plt.title("Combined eye mask")
     plt.axis("off")
@@ -179,13 +180,13 @@ def show_results(image: np.ndarray, sclera_mask: np.ndarray, overlay: np.ndarray
 
 def process_image(path: str, scale: float = 0.7,v_thresh: float = 0.1,s_thresh: float = 0.1):
     image = cv2.imread(path, cv2.IMREAD_COLOR)
-    im, eye_mask, overlay = process_eye_pipeline(image=image, scale=scale, v_thresh=v_thresh, s_thresh=s_thresh)
-    # show_results(im, eye_mask, overlay) # show results in a nice format
-    return im, eye_mask, overlay
+    eye_mask, overlay = process_eye_pipeline(image=image, scale=scale, v_thresh=v_thresh, s_thresh=s_thresh)
+    show_results(eye_mask, overlay) # show results in a nice format
+    return eye_mask, overlay
 
 
 
 
-# if __name__ == "__main__":
-#     image_path = Path(__file__).resolve().parent / "uploads" / "frames" / "frame_0011.png"
-#     process_image(str(image_path))
+if __name__ == "__main__":
+    image_path = Path(__file__).resolve().parent / "uploads" / "frames" / "frame_0011.png"
+    process_image(str(image_path))

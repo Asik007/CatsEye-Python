@@ -30,6 +30,7 @@ ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm'}
 # MIME type → extension fallback for when iOS sends no filename/extension
 MIME_TO_EXT = {
     'image/heic': '.heic',
+    'video/quicktime': '.mov',
     'image/heif': '.heif',
     'image/jpeg': '.jpg',
     'image/png': '.png',
