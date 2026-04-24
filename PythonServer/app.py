@@ -1,3 +1,5 @@
+from time import time
+
 from flask import Flask, render_template, request, jsonify
 from PIL import Image
 from werkzeug.utils import secure_filename
@@ -5,7 +7,7 @@ from io import BytesIO
 import mimetypes
 import os
 
-from Pipeline import process_and_save
+from new_pipeline import process_and_stabilize
 
 # Register HEIF/HEIC support — must happen before any Image.open() calls
 try:
@@ -17,6 +19,8 @@ except ImportError:
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['OUTPUT_FOLDER'] = 'output'
+# output_folder = 'output
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -83,12 +87,14 @@ def upload_file():
     print(f"  Content-Length: {request.content_length}")
     print(f"  Form keys:      {list(request.form.keys())}")
     print(f"  File keys:      {list(request.files.keys())}")
+    filename = request.headers.get('filename')
+    print(f"  Filename header: {filename}")
     try:
         uploaded_file = request.files.get('file')
         if uploaded_file and uploaded_file.filename:
             raw_data = uploaded_file.read()
             mimetype = uploaded_file.mimetype or ''
-            filename = get_save_filename(uploaded_file.filename, mimetype)
+            # filename = get_save_filename(uploaded_file.filename, mimetype)
         else:
             # Raw body upload where Content-Type is the MIME type directly.
             raw_data = request.get_data(cache=True)
@@ -97,7 +103,7 @@ def upload_file():
                 return jsonify({"error": "No data provided"}), 400
 
             mimetype = request.content_type.split(';')[0].strip() if request.content_type else ''
-            filename = get_save_filename('', mimetype)
+            # filename = get_save_filename('', mimetype)
 
         print(f"  Upload: {len(raw_data)} bytes, MIME: {mimetype}, filename: {filename}")
 
@@ -108,15 +114,17 @@ def upload_file():
 
         if is_video_upload(filename, mimetype):
             output_csv = build_output_csv_path(filename)
-            pipeline_result = process_and_save(filepath, output_csv)
-            return jsonify({
+            pipeline_result = process_and_stabilize(filepath, output_dir=os.path.join(app.config['OUTPUT_FOLDER'], "results_" + time.strftime("%Y%m%d-%H%M%S"))
+, smooth_radius=30)
+            return 
+        jsonify({
                 "message": "Video received and processed successfully",
-                "filename": filename,
-                "size_bytes": len(raw_data),
-                "output_csv": pipeline_result["csv_path"],
-                "output_video": pipeline_result["video_path"],
-                "frames_visualized": pipeline_result["frames_visualized"],
-                "tracking_points": pipeline_result["tracking_points"],
+                # "filename": filename,
+                # "size_bytes": len(raw_data),
+                # "output_csv": pipeline_result["csv_path"],
+                # "output_video": pipeline_result["video_path"],
+                # "frames_visualized": pipeline_result["frames_visualized"],
+                # "tracking_points": pipeline_result["tracking_points"],
             }), 200
 
         try:

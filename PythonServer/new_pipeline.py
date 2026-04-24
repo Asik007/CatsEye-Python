@@ -8,6 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
+from sclera import sclera_pipeline
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ROI Selection & Cross-Correlation Tracking
@@ -299,11 +302,21 @@ def process_and_stabilize(
     save_tracking_csv(tracked_points, csv_path)
     print(f"\n  Tracking CSV → {csv_path}")
 
+    # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
+    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+    sclera_pipeline(stabilized_video, overlay_path, mask_path)
+    print(f"\n  Sclera overlay video → {overlay_path}")
+    print(f"\n  Sclera mask video → {mask_path}")
+
+
     return {
         "tracking_video":   tracking_video,
         "stabilized_video": stabilized_video,
         "csv_path":         csv_path,
         "frames_tracked":   len(tracked_points),
+        "sclera_overlay":   overlay_path,
+        "sclera_mask":      mask_path,
     }
 
 
@@ -311,7 +324,25 @@ def process_and_stabilize(
 # Playback helper
 # ──────────────────────────────────────────────────────────────────────────────
 
-def playback_video(path: str, window_title: str = "Playback  |  Q to close") -> None:
+def _resize_for_playback(frame: np.ndarray, shrink_percent: float = 0.0) -> np.ndarray:
+    """Return a resized frame shrunk by `shrink_percent` for display only."""
+    if shrink_percent <= 0:
+        return frame
+    if shrink_percent >= 100:
+        raise ValueError("shrink_percent must be between 0 and 99.99.")
+
+    scale = 1.0 - (shrink_percent / 100.0)
+    h, w = frame.shape[:2]
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+    return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
+def playback_video(
+    path: str,
+    window_title: str = "Playback  |  Q to close",
+    shrink_percent: float = 0.0,
+) -> None:
     cap   = cv2.VideoCapture(path)
     fps   = cap.get(cv2.CAP_PROP_FPS) or 30.0
     delay = max(1, int(1000 / fps))
@@ -319,10 +350,28 @@ def playback_video(path: str, window_title: str = "Playback  |  Q to close") -> 
         ret, frame = cap.read()
         if not ret:
             break
-        cv2.imshow(window_title, frame)
+        frame_to_show = _resize_for_playback(frame, shrink_percent=shrink_percent)
+        cv2.imshow(window_title, frame_to_show)
         if cv2.waitKey(delay) & 0xFF == ord("q"):
             break
     cap.release()
+    cv2.destroyAllWindows()
+
+
+def playback_image(
+    image_path: str,
+    window_title: str = "Image  |  Q to close",
+    shrink_percent: float = 0.0,
+) -> None:
+    image = cv2.imread(image_path)
+    if image is None:
+        raise IOError(f"Cannot open image: {image_path}")
+
+    image_to_show = _resize_for_playback(image, shrink_percent=shrink_percent)
+    cv2.imshow(window_title, image_to_show)
+    while True:
+        if cv2.waitKey(25) & 0xFF == ord("q"):
+            break
     cv2.destroyAllWindows()
 
 
@@ -348,7 +397,9 @@ def _run_cli() -> None:
 
     # Source video
     while True:
-        video_path = _clean(input("Source video path: "))
+        default_video = os.path.join(cwd, "uploads\\IMG_1702.mov")
+        raw = input(f"Source video path [{default_video}]: ").strip()
+        video_path = _clean(raw) if raw else default_video
         if os.path.isfile(video_path):
             break
         print("  File not found — try again.")
@@ -370,6 +421,14 @@ def _run_cli() -> None:
         cv2.imshow  = lambda *a, **k: None          # type: ignore[assignment]
         cv2.waitKey = lambda _=0: ord("q")          # type: ignore[assignment]
 
+    # Playback resize preference
+    raw = input("Shrink playback windows by percent [0]: ").strip()
+    try:
+        shrink_percent = float(raw) if raw else 0.0
+    except ValueError:
+        shrink_percent = 0.0
+    shrink_percent = min(max(shrink_percent, 0.0), 99.99)
+
     # Run
     start = time.perf_counter()
     result = process_and_stabilize(video_path, output_dir, smooth_radius=smooth_radius)
@@ -386,9 +445,17 @@ def _run_cli() -> None:
 
     if show_playback:
         print("\n► Playing motion-tracking video  (Q to skip)…")
-        playback_video(result["tracking_video"], "Motion Tracking  |  Q to close")
+        playback_video(
+            result["tracking_video"],
+            "Motion Tracking  |  Q to close",
+            shrink_percent=shrink_percent,
+        )
         print("► Playing stabilised video  (Q to skip)…")
-        playback_video(result["stabilized_video"], "Stabilised  |  Q to close")
+        playback_video(
+            result["stabilized_video"],
+            "Stabilised  |  Q to close",
+            shrink_percent=shrink_percent,
+        )
 
 
 if __name__ == "__main__":
