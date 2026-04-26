@@ -78,100 +78,53 @@ _DISK_3 = disk(3)
 _DISK_5 = disk(5)
 _DISK_7 = disk(7)
 
-def process_eye_pipeline(
-    image: np.ndarray,
-    scale: float = 0.7, # Resize for speed (0.7 = 70% of original size)
-    v_thresh: float = 0.1, # Brightness threshold (0-1)
-    s_thresh: float = 0.1, # Saturation threshold (0-1)
-) -> tuple[np.ndarray, np.ndarray]:
-    # outputs are: resized RGB image, raw sclera mask, refined eye mask + overlay
-    
-    # --- 1) Load image (BGR -> RGB) ---
-    if image is None:
-        raise FileNotFoundError("Could not read image")
-    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+import cv2
+import numpy as np
 
-    # --- 2) Resize for speed ---
-    new_shape = (int(image.shape[0] * scale), int(image.shape[1] * scale))
-    image_small = cv2.resize(image, (new_shape[1], new_shape[0]), interpolation=cv2.INTER_AREA)
+SCALE = 0.05  # 5% of original size for faster processing
+def process_eye_pipeline(image: np.ndarray):
+    blurred = cv2.medianBlur(image, 67)  # must be odd
 
-    # --- 3) Convert to HSV channels ---
-    hsv = rgb2hsv(image_small.astype(np.float32) / 255.0)
-    s = hsv[:, :, 1]
-    v = hsv[:, :, 2]
+    cap_32_hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-    # save the HSV data and create a histogram for the saturation and brightness channels average over the entire video
-    np.save("hsv_data.npy", hsv)
+    thresh_hsv = cv2.inRange(cap_32_hsv, (0, 1, 180), (180, 35, 255))
+    contours, _ = cv2.findContours(thresh_hsv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    largest_contour = max(contours, key=cv2.contourArea)
 
 
-    # --- 4) Build initial sclera mask (bright + low saturation) ---
-    sclera_mask = (v > v_thresh) & (s < s_thresh)
-    sclera_mask = opening(sclera_mask, disk(3))
-    sclera_mask = closing(sclera_mask, disk(7))
-    sclera_mask = remove_small_holes(sclera_mask, max_size=64)
-    sclera_mask = remove_small_objects(sclera_mask, max_size=64)
+    overlay = cv2.drawContours(image, [largest_contour], -1, (0, 255, 0), 2)
+    mask = np.zeros_like(image)
+    mask = cv2.drawContours(mask, [largest_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+    # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    # num_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
 
-    # --- 5) Keep only largest connected component ---
-    labeled = label(sclera_mask)
-    if labeled.max() > 0:
-        counts = np.bincount(labeled.ravel())
-        counts[0] = 0  # exclude background
-        eye_mask = labeled == counts.argmax()
-    else:
-        eye_mask = sclera_mask.astype(bool)
+    # print(f"Found {num_labels - 1} bright components in low-res image")
+    # print(f"stats: {stats}")  # skip label 0 (background)
+    # largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+    # largest_mask = np.uint8(cv2.connectedComponents(mask)[1] == largest_label) * 255
+    # contours, _ = cv2.findContours(largest_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # fin_cont = [(contours[0] / SCALE).astype(np.int32)]
+    # mask = np.zeros_like(image)
+    # mask = cv2.drawContours(mask, fin_cont, -1, (255, 255, 255), thickness=cv2.FILLED)
+    # overlay = cv2.drawContours(image, fin_cont, -1, (0, 255, 0), thickness=2)
 
-    # --- 6) Final eye-mask refinement ---
-    eye_mask = closing(eye_mask, disk(5))
-    eye_mask = remove_small_holes(eye_mask, max_size=64)
+    return mask, overlay
 
-    # --- 7) Create overlay (mask highlighted in red) ---
-    
-    overlay = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # return largest_contour, overlay
 
-    # ✅ Rotate FIRST (when mask is still at its own small resolution, cheap op)
-    # eye_mask_rotated = np.rot90(eye_mask)
-
-    # THEN resize to match overlay/image dimensions
-    eye_mask_full = cv2.resize(
-        eye_mask.astype(np.uint8),
-        (image.shape[1], image.shape[0]),   # (width, height)
-        interpolation=cv2.INTER_NEAREST
-    ).astype(bool)
-
-    # print((~eye_mask_full).dtype, (~eye_mask_full).shape, np.sum(~eye_mask_full))
-
-    overlay[eye_mask_full] = [255, 0, 0]  # Red overlay for eye region
-
-
-    # Returns: resized RGB image, raw sclera mask, refined eye mask + overlay
-
-    #TODO: SOMETHING IS WRONG HERE AND IT RETURNS AN INVERTED COLOR IMAGE
-
-    eye_mask_region1 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    inv_mask = ~eye_mask_full
-    eye_mask_region1[inv_mask] = [0,0,0]
-    eye_mask_region2 = cv2.cvtColor(eye_mask_region1, cv2.COLOR_BGR2RGB)
-
-
-
-
-    return eye_mask_region1, overlay
-
+def draw_contour(frame, contour):
+    # Only draw once
+    return cv2.drawContours(frame.copy(), [contour], -1, (0, 255, 0), 2)
 
 def show_results(sclera_mask: np.ndarray, overlay: np.ndarray) -> None:
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(10, 5))
 
-    # plt.subplot(2, 2, 1)
-    # plt.imshow(image)
-    # plt.title("Original")
-    # plt.axis("off")
-
-    plt.subplot(2, 1, 1)
-    plt.imshow(sclera_mask, cmap="gray")
+    plt.subplot(1, 2, 1)
+    plt.imshow(sclera_mask)
     plt.title("Sclera mask")
     plt.axis("off")
 
-    plt.subplot(2, 1, 2)
+    plt.subplot(1, 2, 2)
     plt.imshow(overlay)
     plt.title("Combined eye mask")
     plt.axis("off")
@@ -184,7 +137,7 @@ def show_results(sclera_mask: np.ndarray, overlay: np.ndarray) -> None:
 
 def process_image(path: str, scale: float = 0.7,v_thresh: float = 0.1,s_thresh: float = 0.1):
     image = cv2.imread(path, cv2.IMREAD_COLOR)
-    eye_mask, overlay = process_eye_pipeline(image=image, scale=scale, v_thresh=v_thresh, s_thresh=s_thresh)
+    eye_mask, overlay = process_eye_pipeline(image=image)
     show_results(eye_mask, overlay) # show results in a nice format
     return eye_mask, overlay
 
