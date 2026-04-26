@@ -100,6 +100,10 @@ def process_eye_pipeline(
     s = hsv[:, :, 1]
     v = hsv[:, :, 2]
 
+    # save the HSV data and create a histogram for the saturation and brightness channels average over the entire video
+    np.save("hsv_data.npy", hsv)
+
+
     # --- 4) Build initial sclera mask (bright + low saturation) ---
     sclera_mask = (v > v_thresh) & (s < s_thresh)
     sclera_mask = opening(sclera_mask, disk(3))

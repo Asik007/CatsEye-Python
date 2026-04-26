@@ -5,6 +5,8 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+import matplotlib.pyplot as plt
+
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
@@ -268,6 +270,7 @@ def process_and_stabilize(
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    '''
     # ── 1. First frame → ROI selection ────────────────────────────────────────
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -281,26 +284,28 @@ def process_and_stabilize(
     roi, template, origin_center = select_roi(first_frame)
     print(f"  ROI  : x={roi[0]}  y={roi[1]}  w={roi[2]}  h={roi[3]}")
     print(f"  Center : {origin_center}")
-
+    
     # ── 2. Cross-correlation tracking ─────────────────────────────────────────
     print("\n► Tracking ROI across all frames (cross-correlation)…")
     tracked_points = track_with_cross_correlation(video_path, roi, template, origin_center)
     print(f"  Tracked {len(tracked_points)} frames.")
-
+    
     # ── 3. Motion-tracking video ───────────────────────────────────────────────
     tracking_video = os.path.join(output_dir, "motion_tracking.mp4")
     print(f"\n► Rendering motion-tracking video…\n  → {tracking_video}")
     render_tracking_video(video_path, tracked_points, tracking_video, roi)
-
+    
+    # CSV
+    csv_path = os.path.join(output_dir, "tracking_results.csv")
+    save_tracking_csv(tracked_points, csv_path)
+    print(f"\n  Tracking CSV → {csv_path}")
+    '''
     # ── 4. Stabilisation ──────────────────────────────────────────────────────
     stabilized_video = os.path.join(output_dir, "stabilized.mp4")
     print(f"\n► Stabilising video (smooth_radius={smooth_radius})…\n  → {stabilized_video}")
     stabilize_video(video_path, stabilized_video, smooth_radius=smooth_radius)
 
-    # ── 5. CSV ────────────────────────────────────────────────────────────────
-    csv_path = os.path.join(output_dir, "tracking_results.csv")
-    save_tracking_csv(tracked_points, csv_path)
-    print(f"\n  Tracking CSV → {csv_path}")
+
 
     # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
     overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
@@ -310,11 +315,24 @@ def process_and_stabilize(
     print(f"\n  Sclera mask video → {mask_path}")
 
 
+    # Show histogram of the saturation and brightness channels average over the entire video
+    hsv_data = np.load("hsv_data.npy")
+    s = hsv_data[:, :, 1]
+    v = hsv_data[:, :, 2]
+    plt.hist(s.ravel(), bins=256, range=(0, 1), color='blue', alpha=0.5, label='Saturation')
+    plt.hist(v.ravel(), bins=256, range=(0, 1), color='orange', alpha=0.5, label='Brightness')
+    plt.title("Saturation and Brightness Histograms")
+    plt.xlabel("Value")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.savefig("histograms.png")
+    plt.close()
+
     return {
-        "tracking_video":   tracking_video,
+        # "tracking_video":   tracking_video,
         "stabilized_video": stabilized_video,
-        "csv_path":         csv_path,
-        "frames_tracked":   len(tracked_points),
+        # "csv_path":         csv_path,
+        # "frames_tracked":   len(tracked_points),
         "sclera_overlay":   overlay_path,
         "sclera_mask":      mask_path,
     }
@@ -434,10 +452,10 @@ def _run_cli() -> None:
     result = process_and_stabilize(video_path, output_dir, smooth_radius=smooth_radius)
 
     print("\n✓ All done.")
-    print(f"  Motion-tracking video : {result['tracking_video']}")
+    # print(f"  Motion-tracking video : {result['tracking_video']}")
     print(f"  Stabilised video      : {result['stabilized_video']}")
-    print(f"  Tracking CSV          : {result['csv_path']}")
-    print(f"  Frames tracked        : {result['frames_tracked']}")
+    # print(f"  Tracking CSV          : {result['csv_path']}")
+    # print(f"  Frames tracked        : {result['frames_tracked']}")
     end = time.perf_counter()
     print(f"  Total processing time : {end - start:.2f} seconds")
     #save the stabilised, and motiontracking videos and csv to the output folder
