@@ -2,6 +2,7 @@ import cv2
 import os
 import sys
 
+from line_profiler import profile
 
 import matplotlib.pyplot as plt
 
@@ -29,11 +30,14 @@ from CV_steps.sclera import sclera_pipeline
 # Combined Pipeline
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+@profile
 def process_and_stabilize(
     video_path: str,
     output_dir: str,
     smooth_radius: int = 50,
-) -> dict:
+    ) -> dict:
+    
     """
     Full pipeline:
 
@@ -50,24 +54,28 @@ def process_and_stabilize(
     os.makedirs(output_dir, exist_ok=True)
 
     # XCorr tracking + video render
-    xCorr_pipeline(video_path, output_dir, smooth_radius=smooth_radius)
-    print(f"\n  Motion-tracking video → {output_dir + '/motion_tracking.mp4'}")
-    print(f"\n  csv tracking data → {output_dir + '/tracking_results.csv'}")
+    # Each on of these steps opens the video independently, but each step must come after the previous one finishes to ensure the video file is not being accessed by multiple processes at once.
+
+    # tracking_video = os.path.join(output_dir, "motion_tracking.mp4")
+    # xCorr_pipeline(video_path, output_dir, smooth_radius=smooth_radius)
+    # print(f"\n  Motion-tracking video → {tracking_video}")
+    # print(f"\n  csv tracking data → {output_dir + '/tracking_results.csv'}")
     
+    # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
+    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+    sclera_pipeline(video_path, overlay_path, mask_path)
+    print(f"\n  Sclera overlay video → {overlay_path}")
+    print(f"\n  Sclera mask video → {mask_path}")
+
+
 
     # ── 4. Stabilisation ──────────────────────────────────────────────────────
     stabilized_video = os.path.join(output_dir, "stabilized.mp4")
     print(f"\n► Stabilising video (smooth_radius={smooth_radius})…\n  → {stabilized_video}")
-    stabilize_video(video_path, stabilized_video, smooth_radius=smooth_radius)
+    stabilize_video(overlay_path, stabilized_video, smoothing_radius=smooth_radius)
 
 
-
-    # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
-    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
-    sclera_pipeline(stabilized_video, overlay_path, mask_path)
-    print(f"\n  Sclera overlay video → {overlay_path}")
-    print(f"\n  Sclera mask video → {mask_path}")
 
 
     # Show histogram of the saturation and brightness channels average over the entire video
@@ -189,7 +197,7 @@ def _run_cli() -> None:
     smooth_radius = int(raw) if raw.isdigit() else 50
 
     # Playback preference
-    show_playback = _yn("Play back result videos when done?", default=True)
+    show_playback = _yn("Play back result videos when done?", default=False)
     if not show_playback:
         cv2.imshow  = lambda *a, **k: None          # type: ignore[assignment]
         cv2.waitKey = lambda _=0: ord("q")          # type: ignore[assignment]
