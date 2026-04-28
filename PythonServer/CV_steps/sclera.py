@@ -46,7 +46,6 @@ def sclera_pipeline(input_path: str, overlay_path: str, mask_path: str, max_work
 
     fourcc         = cv2.VideoWriter_fourcc(*"mp4v")
     overlay_writer = cv2.VideoWriter(overlay_path, fourcc, fps, (w, h))
-    mask_writer    = cv2.VideoWriter(mask_path, fourcc, fps, (w, h))
 
     # Read all frames first (lightweight — raw bytes only)
     raw_frames = []
@@ -75,17 +74,14 @@ def sclera_pipeline(input_path: str, overlay_path: str, mask_path: str, max_work
             results[idx] = (overlay, mask)
 
     # Write in order
-    for i in range(len(raw_frames)):
-        overlay, _ = results[i]
-        # Ensure overlay is 3-channel BGR before writing
-        if overlay is None:
-            overlay = np.zeros((h, w, 3), dtype=np.uint8)
-        elif overlay.ndim == 2:  # Single-channel (grayscale)
-            overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
-        overlay_writer.write(overlay)
-        print(f"Processed frame {i + 1}/{len(raw_frames)}", end="\r")
-    overlay_writer.release()
+    # for i in range(len(raw_frames)):
+    #     overlay, _ = results[i]
+    #     # Ensure overlay is 3-channel BGR before writing
+    #     overlay_writer.write(overlay)
+    #     print(f"Processed frame {i + 1}/{len(raw_frames)}", end="\r")
+    # overlay_writer.release()
     
+    mask_writer    = cv2.VideoWriter(mask_path, fourcc, fps, (w, h))
     for i in range(len(raw_frames)):
         _, mask = results[i]
         mask_writer.write(mask)
@@ -126,6 +122,9 @@ def process_eye_pipeline(image: np.ndarray, DEBUG: bool = False):
         return None, None
 
     largest_contour = max(contours, key=cv2.contourArea)
+    # peri = cv2.arcLength(largest_contour, True)
+    # simplified_contour = cv2.approxPolyDP(largest_contour, epsilon=0.015 * peri, closed=True)
+
 
     # ── 4. Scale contour coords back to original image space ─────────────────
     # No magic offset — pure scale from low-res → original
@@ -147,17 +146,19 @@ def process_eye_pipeline(image: np.ndarray, DEBUG: bool = False):
     
 
     mask = np.zeros_like(image, dtype=np.uint8)
-    mask = cv2.drawContours(mask, [largest_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+
+    mask = cv2.drawContours(mask, [transformed], -1, (255, 255, 255), thickness=cv2.FILLED)
     
     if mask is None:
         print("tf my data at?")
 
-    contour_img = image * mask.astype(bool)
+    # contour_img = image * mask.astype(bool) #works but is our slow step
+    contour_img = cv2.bitwise_and(image, mask)
     
     
     # ── 6. Debug overlay ──────────────────────────────────────────────────────
     overlay = None
-    DEBUG = True
+    DEBUG = False
     if DEBUG:
         overlay = image.copy()
         cv2.drawContours(overlay, [transformed], -1, (0, 255, 0), thickness=2)
