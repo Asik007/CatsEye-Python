@@ -1,3 +1,4 @@
+import argparse
 import cv2
 import numpy as np
 import os
@@ -10,9 +11,16 @@ def _select_roi(first_img: np.ndarray):
     Returns (x, y, w, h), template crop, and center point.
     """
     window_name = "Select ROI  –  Enter / Space to confirm"
-    roi = cv2.selectROI(window_name, first_img, showCrosshair=False, fromCenter=False)
+    shrink = 0.5
+    display_img = cv2.resize(first_img, (0, 0), fx=shrink, fy=shrink)
+    roi = cv2.selectROI(window_name, display_img, showCrosshair=False, fromCenter=False)
     cv2.destroyWindow(window_name)
-    x, y, w, h = map(int, roi)
+    print(f"Selected ROI (on displayed image): {roi}")
+    # x, y, w, h = map(int, roi)
+    # scale back up to original image coordinates
+    x,y,w,h = (np.array(roi) / shrink).astype(int)
+    # x, y, w, h = scaled_roi
+
     if w <= 0 or h <= 0:
         raise ValueError("No ROI selected.")
     template = first_img[y : y + h, x : x + w].copy()
@@ -75,6 +83,39 @@ def _render_tracking_video(
             #     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA,
             # )
 
+        writer.write(frame)
+
+        if (idx + 1) % 50 == 0:
+            print(f"  [render]   {idx + 1}/{n} frames written")
+
+    cap.release()
+    writer.release()
+
+def _render_stabilized_video(
+    video_path: str,
+    tracked_points: list[dict],
+    output_path: str,
+) -> None:
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    n   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
+
+    for idx in range(n):
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        del_x, del_y = tracked_points[idx]["displacement"]
+        #  shift the frame in the opposite direction of the displacement to stabilize
+        M = np.float32([[1, 0, -del_x], [0, 1, -del_y]])
+        frame = cv2.warpAffine(frame, M, (w, h))
+        
         writer.write(frame)
 
         if (idx + 1) % 50 == 0:
@@ -164,6 +205,9 @@ def xCorr_pipeline(
     Returns a dict with paths to all outputs and summary counts.
     """
 
+    # ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
     # ── 1. First frame → ROI selection ────────────────────────────────────────
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -188,8 +232,47 @@ def xCorr_pipeline(
     print(f"\n► Rendering motion-tracking video…\n  → {tracking_video}")
     _render_tracking_video(video_path, tracked_points, tracking_video, roi)
     
+    # stabilize the video based on the tracked points
+    stabilized_video = os.path.join(output_dir, "sclera_stabilized_XC.mp4")
+    print(f"\n► Rendering stabilized video…\n  → {stabilized_video}")
+    _render_stabilized_video(video_path, tracked_points, stabilized_video)
+
     # CSV
-    csv_path = os.path.join(output_dir, "tracking_results.csv")
-    _save_tracking_csv(tracked_points, csv_path)
-    print(f"\n  Tracking CSV → {csv_path}")
+    # csv_path = os.path.join(output_dir, "tracking_results.csv")
+    # _save_tracking_csv(tracked_points, csv_path)
+    # print(f"\n  Tracking CSV → {csv_path}")
     return
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Track an ROI via cross-correlation and render outputs."
+    )
+    parser.add_argument(
+        "--video",
+        default="output/testing_sclera/sclera_overlay_ML.mp4",
+        help="Path to the input video.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="output/testing_sclera/",
+        help="Directory to save outputs (motion video + CSV).",
+    )
+    # parser.add_argument(
+    #     "--smooth-radius",
+    #     type=int,
+    #     default=50,
+    #     help="Smoothing radius (currently unused).",
+    # )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    xCorr_pipeline(
+        video_path=args.video,
+        output_dir=args.output_dir,
+        # smooth_radius=args.smooth_radius,
+    )
+
+

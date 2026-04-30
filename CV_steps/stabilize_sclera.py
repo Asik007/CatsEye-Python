@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 
+
 # ── Feature detection helpers ──────────────────────────────────────────────────
 
 def _build_interior_mask(gray_frame: np.ndarray, min_edge_dist: int = 50) -> np.ndarray:
@@ -16,10 +17,26 @@ def _build_interior_mask(gray_frame: np.ndarray, min_edge_dist: int = 50) -> np.
     is at least `min_edge_dist` away.  This prevents features being detected
     right on the sclera boundary where they are least stable.
     """
-    binary = cv2.threshold(gray_frame, 1, 255, cv2.THRESH_BINARY)[1]
-    dist   = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
-    return (dist > min_edge_dist).astype(np.uint8) * 255
+    # default which works OK
+    # binary = cv2.threshold(gray_frame, 1, 255, cv2.THRESH_BINARY)[1]
+    # dist   = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    # return (dist > min_edge_dist).astype(np.uint8) * 255
 
+    # try getting only the center of the mask
+    bg_clr = cv2.mean(gray_frame)[0]
+    binary = cv2.threshold(gray_frame, bg_clr + 1, 255, cv2.THRESH_BINARY)[1]
+    # cv2.imshow("binary", binary)
+    # cv2.waitKey(1)
+
+    # NOrmalized masked cross correlation would probably be good (scikit image)
+    
+    # Phase cross corrlation
+
+    # li thresholding
+
+    # ORB features
+    return binary
+    
 
 def _detect_features(
     gray_frame: np.ndarray,
@@ -71,6 +88,18 @@ def stabilize_frame(
 
     mask     = _build_interior_mask(prev_gray, min_edge_dist)
     features = _detect_features(prev_gray, mask)
+    cv2.imwrite("debug_frame.png", curr_frame)  # save the mask for debugging
+    # during debug draw the features on the mask and save it
+    if DEBUG:
+        debug_img = cv2.cvtColor(prev_gray, cv2.COLOR_GRAY2BGR)
+        for pt in features:
+            x, y = pt.ravel()
+            cv2.circle(debug_img, (int(x), int(y)), 3, (0, 255, 0), -1)
+        # shrink debug_img for display
+        debug_img = cv2.resize(debug_img, (w // 2, h // 2))
+        cv2.imshow("Features", debug_img)
+        cv2.waitKey(1)
+
 
     if features is None:
         return curr_frame, False
@@ -131,6 +160,7 @@ def stabilize_video(
     w        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h        = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps      = cap.get(cv2.CAP_PROP_FPS)
+    border = int(max(min_edge_dist * w, min_edge_dist * h))
     if fps <= 0:
         fps = 30.0
 
@@ -166,7 +196,7 @@ def stabilize_video(
             prev_gray,
             curr_gray,
             frame,
-            min_edge_dist=min_edge_dist,
+            min_edge_dist=border,
             ransac_thresh=ransac_thresh,
         )
 
@@ -207,8 +237,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--min-edge-dist",
-        type=int,
-        default=50,
+        type=float,
+        default=.05,
         help="Minimum pixel distance from the sclera boundary for feature detection. (default: 50)",
     )
     parser.add_argument(
@@ -217,6 +247,13 @@ def parse_args() -> argparse.Namespace:
         default=5.0,
         help="RANSAC reprojection-error threshold for homography estimation. (default: 5.0)",
     )
+    parser.add_argument(
+        "--debug",
+        type=bool,
+        default=False,
+        # action="store_true",
+        help="Show intermediate feature detection results for debugging.",
+    )
     return parser.parse_args()
 
 
@@ -224,6 +261,10 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
+
 
     stabilize_video(
         video_path=args.video,
@@ -235,4 +276,4 @@ if __name__ == "__main__":
 
 # Example commands:
 #   python CV_steps/stabilize_sclera.py --video output/testing_sclera/sclera_mask_ML.mp4
-#   python CV_steps/stabilize_sclera.py --video output/testing_sclera/sclera_mask_ML.mp4 --output output/testing_sclera/mask_sclera_stabilized.mp4 --min-edge-dist 30
+#   python CV_steps/stabilize_sclera.py --video output/testing_sclera/sclera_mask_ML.mp4 --output output/testing_sclera/mask_sclera_stabilized.mp4 --min-edge-dist .03 --debug True
