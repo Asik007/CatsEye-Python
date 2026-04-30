@@ -11,6 +11,7 @@ import numpy as np
 from CV_steps.XCorr import xCorr_pipeline
 from CV_steps.stabilize import stabilize_video
 from CV_steps.sclera import sclera_pipeline
+import CV_steps.sclera_ML as sclera_ML
 
 
 
@@ -53,6 +54,11 @@ def process_and_stabilize(
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
+    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+    sclera_ML.process_video( video_path=video_path, output_mask_path=mask_path, output_overlay_path=overlay_path,model_path="ML_stuff/best.pt", conf=0.25, imgsz=512)
+
     # XCorr tracking + video render
     # Each on of these steps opens the video independently, but each step must come after the previous one finishes to ensure the video file is not being accessed by multiple processes at once.
 
@@ -62,18 +68,18 @@ def process_and_stabilize(
     # print(f"\n  csv tracking data → {output_dir + '/tracking_results.csv'}")
     
     # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
-    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
-    sclera_pipeline(video_path, overlay_path, mask_path)
-    print(f"\n  Sclera overlay video → {overlay_path}")
-    print(f"\n  Sclera mask video → {mask_path}")
+
+    # sclera_pipeline(video_path, overlay_path, mask_path)
+    print("\n  Sclera overlay video → " + overlay_path)
+    print("\n  Sclera mask video → " + mask_path)
 
 
 
     # ── 4. Stabilisation ──────────────────────────────────────────────────────
     stabilized_video = os.path.join(output_dir, "stabilized.mp4")
     print(f"\n► Stabilising video (smooth_radius={smooth_radius})…\n  → {stabilized_video}")
-    stabilize_video(overlay_path, stabilized_video, smoothing_radius=smooth_radius)
+    xCorr_pipeline(overlay_path, stabilized_video)
+
 
 
 

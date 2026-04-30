@@ -27,6 +27,29 @@ def _select_roi(first_img: np.ndarray):
     center   = (x + w // 2, y + h // 2)
     return (x, y, w, h), template, center
 
+def _get_inscribed_square(first_img: np.ndarray) -> tuple:
+    mask = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
+    M = cv2.moments(mask)
+
+    # Calculate x,y coordinate of center
+    if M["m00"] != 0:
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+    else:
+        cX, cY = 0, 0
+
+    print(f"Center: ({cX}, {cY})")
+
+    per_sel = 0.2
+
+
+
+    side = int(min(first_img.shape[0] * per_sel, first_img.shape[1] * per_sel))
+    template = first_img[int(cY - side // 2):int(cY + side // 2), int(cX - side // 2):int(cX + side // 2)].copy()
+
+    print(f"Inscribed square ROI: center=({cX}, {cY}), side={side}")
+    return (cX, cY, side, side), template, (cX,cY)
+
 def _render_tracking_video(
     video_path: str,
     tracked_points: list[dict],
@@ -115,7 +138,11 @@ def _render_stabilized_video(
         #  shift the frame in the opposite direction of the displacement to stabilize
         M = np.float32([[1, 0, -del_x], [0, 1, -del_y]])
         frame = cv2.warpAffine(frame, M, (w, h))
-        
+        # test a homography-based stabilization (not currently better than simple translation)
+        # src_pts = np.float32([tracked_points[idx]["center"]])
+        # dst_pts = np.float32([tracked_points[0]["center"]])
+        # H, _ = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC)
+        # frame = cv2.warpPerspective(frame, H, (w, h))
         writer.write(frame)
 
         if (idx + 1) % 50 == 0:
@@ -123,6 +150,16 @@ def _render_stabilized_video(
 
     cap.release()
     writer.release()
+
+def batcher(
+    input_video: str,
+    output_video: str,
+    batch_size: int = 5,
+    ):
+            stacked = np.stack(frames, axis=0).astype(np.float32)
+            summed = np.sum(stacked, axis=0)
+            remapped = cv2.normalize(summed, None, 0, 255, cv2.NORM_MINMAX)
+
 
 def track_with_cross_correlation(
     video_path: str,
@@ -188,10 +225,9 @@ def _save_tracking_csv(tracked_points: list[dict], output_path: str) -> None:
         w.writerow({"frame": "std",  "center_x": std[0],  "center_y": std[1],
                     "disp_x": "", "disp_y": "", "match_score": ""})
 
-def xCorr_pipeline(
+def xCorr_pipeline_debug(
     video_path: str,
     output_dir: str,
-    smooth_radius: int = 50,
 ) -> dict:
     """
     Full pipeline:
@@ -218,7 +254,8 @@ def xCorr_pipeline(
         raise IOError("Could not read first frame from video.")
 
     print("► Select an ROI on the first frame, then press Enter / Space to confirm.")
-    roi, template, origin_center = _select_roi(first_frame)
+    # roi, template, origin_center = _select_roi(first_frame)
+    roi, template, origin_center = _get_inscribed_square(first_frame)
     print(f"  ROI  : x={roi[0]}  y={roi[1]}  w={roi[2]}  h={roi[3]}")
     print(f"  Center : {origin_center}")
     
@@ -242,6 +279,32 @@ def xCorr_pipeline(
     # _save_tracking_csv(tracked_points, csv_path)
     # print(f"\n  Tracking CSV → {csv_path}")
     return
+
+def xCorr_pipeline(
+    video_path: str,
+    output_dir: str,
+):
+    # ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ── 1. First frame → ROI selection ────────────────────────────────────────
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError(f"Cannot open video: {video_path}")
+    ret, first_frame = cap.read()
+    cap.release()
+    # select the largest square inscribed within the mask
+    roi, template, origin_center = _get_inscribed_square(first_frame)
+
+    print("\n► Tracking ROI across all frames (cross-correlation)…")
+    tracked_points = track_with_cross_correlation(video_path, roi, template, origin_center)
+    print(f"  Tracked {len(tracked_points)} frames.")
+
+    print("\n► Rendering stablized video…")
+    _render_stabilized_video(video_path, tracked_points, os.path.join(output_dir, "sclera_stabilized_XC.mp4"))
+
+    
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -269,7 +332,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    xCorr_pipeline(
+    xCorr_pipeline_debug(
         video_path=args.video,
         output_dir=args.output_dir,
         # smooth_radius=args.smooth_radius,
