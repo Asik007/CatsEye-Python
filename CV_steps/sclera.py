@@ -197,8 +197,8 @@ if __name__ == "__main__":
     start = cv2.getTickCount()
     vid_path = Path(__file__).resolve().parent.parent / "uploads" / "IMG_1759.MOV"
     output_dir = Path(__file__).resolve().parent.parent / "output" / "testing_sclera"
-    overlay_path = os.path.join(output_dir, "sclera_overlay2.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask2.mp4")
+    overlay_path = os.path.join(output_dir, "sclera_overlay_IP.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask_IP.mp4")
     os.makedirs(output_dir, exist_ok=True)
     sclera_pipeline(str(vid_path), overlay_path, mask_path, max_workers=8)
     stabilize_video(

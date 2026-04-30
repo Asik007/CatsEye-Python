@@ -4,6 +4,8 @@ import cv2
  
 import os
 
+# test code to only stabilize the mask video output from the sclera_ML.py script, using the same optical flow method as in sclera.py
+
 
 # cap = cv2.VideoCapture(video_source)
 video_source = r"uploads\IMG_1759.MOV"  # Change this to your video file path or camera index
