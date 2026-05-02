@@ -4,28 +4,11 @@ import numpy as np
 import os
 import csv
 
+try:
+    from CV_steps.render import render_tracking_video, render_stabilized_video, select_wanted_frame
+except ImportError as e:
+    from render import render_tracking_video, render_stabilized_video, select_wanted_frame
 
-def _select_roi(first_img: np.ndarray):
-    """
-    Show the first frame and let the user draw an ROI rectangle.
-    Returns (x, y, w, h), template crop, and center point.
-    """
-    window_name = "Select ROI  –  Enter / Space to confirm"
-    shrink = 0.5
-    display_img = cv2.resize(first_img, (0, 0), fx=shrink, fy=shrink)
-    roi = cv2.selectROI(window_name, display_img, showCrosshair=False, fromCenter=False)
-    cv2.destroyWindow(window_name)
-    print(f"Selected ROI (on displayed image): {roi}")
-    # x, y, w, h = map(int, roi)
-    # scale back up to original image coordinates
-    x,y,w,h = (np.array(roi) / shrink).astype(int)
-    # x, y, w, h = scaled_roi
-
-    if w <= 0 or h <= 0:
-        raise ValueError("No ROI selected.")
-    template = first_img[y : y + h, x : x + w].copy()
-    center   = (x + w // 2, y + h // 2)
-    return (x, y, w, h), template, center
 
 def _get_inscribed_square(first_img: np.ndarray) -> tuple:
     mask = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
@@ -50,119 +33,19 @@ def _get_inscribed_square(first_img: np.ndarray) -> tuple:
     print(f"Inscribed square ROI: center=({cX}, {cY}), side={side}")
     return (cX, cY, side, side), template, (cX,cY)
 
-def _render_tracking_video(
-    video_path: str,
-    tracked_points: list[dict],
-    output_path: str,
-    roi: tuple,
-) -> None:
-    """
-    Re-reads the original video and draws on every frame:
-      • Green polyline trail of the tracked center
-      • Colored ROI box at the current matched position
-      • Current-center dot
-      • Displacement (dx / dy) text in the top-left corner
-    """
-    _x, _y, roi_w, roi_h = roi
-    cap    = cv2.VideoCapture(video_path)
-    fps    = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    n      = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+def gen_mask(
+    frame: np.ndarray,
+    ) -> np.ndarray:
+    
+    frame_gray   = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    frame_binary = cv2.threshold(frame_gray, 1, 255, cv2.THRESH_BINARY)[1]
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-    trail: list[tuple[int, int]] = []
-
-    for idx in range(n):
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        if idx < len(tracked_points):
-            pt     = tracked_points[idx]
-            center = tuple(pt["center"])
-            dx, dy = pt["displacement"]
-            trail.append(center)
-
-            # --- draw trail ---
-            if len(trail) > 1:
-                pts = np.array(trail, dtype=np.int32).reshape((-1, 1, 2))
-                cv2.polylines(frame, [pts], isClosed=False, color=(0, 255, 0), thickness=2)
-
-            # --- draw moving ROI box ---
-            tl = (center[0] - roi_w // 2, center[1] - roi_h // 2)
-            br = (center[0] + roi_w // 2, center[1] + roi_h // 2)
-            cv2.rectangle(frame, tl, br, color=(0, 200, 255), thickness=2)
-
-            # --- center dot ---
-            cv2.circle(frame, center, radius=6, color=(0, 255, 0), thickness=-1)
-
-            # --- displacement label ---
-            # label = f"dx={dx:+d}  dy={dy:+d}"
-            # cv2.putText(
-            #     frame, label, (10, 34),
-            #     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA,
-            # )
-
-        writer.write(frame)
-
-        if (idx + 1) % 50 == 0:
-            print(f"  [render]   {idx + 1}/{n} frames written")
-
-    cap.release()
-    writer.release()
-
-def _render_stabilized_video(
-    video_path: str,
-    tracked_points: list[dict],
-    output_path: str,
-) -> None:
-
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    n   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
-
-    for idx in range(n-1):
-        idx += 1
-        ret, frame = cap.read()
-        if not ret:
-            break
-        print(f"Frame {idx}")
-        # get the tracked_points th
-        M = tracked_points[idx]["transform"]
-        print(f"matrix: {idx} / {len(tracked_points)}")  # print the shape of the matrix
-        print(f"M shappe: {M.shape}")
-        #  shift the frame in the opposite direction of the displacement to stabilize
-        # M = np.float32([[1, 0, -del_x], [0, 1, -del_y]])
-        # frame = cv2.warpAffine(frame, M, (w, h))
-        # test a homography-based stabilization (not currently better than simple translation)
-        # src_pts = np.float32([tracked_points[idx]["center"]])
-        # dst_pts = np.float32([tracked_points[0]["center"]])
-        # H, _ = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC)
-        frame = cv2.warpPerspective(frame, M, (w, h))
-        writer.write(frame)
-
-        if (idx + 1) % 50 == 0:
-            print(f"  [render]   {idx + 1}/{n} frames written")
-
-    cap.release()
-    writer.release()
-
-def batcher(
-    input_video: str,
-    output_video: str,
-    batch_size: int = 5,
-    ):
-            stacked = np.stack(frames, axis=0).astype(np.float32)
-            summed = np.sum(stacked, axis=0)
-            remapped = cv2.normalize(summed, None, 0, 255, cv2.NORM_MINMAX)
+    # shrink it by 50 px (MAKE THIS DEPENDENT ON THE SIZE OF THE VIDEO — 50px is arbitrary and may not work for all resolutions)
+    shrink_dist = min(frame.shape[1] * 0.1, frame.shape[0] * 0.1)
+    dist = cv2.distanceTransform(frame_binary, cv2.DIST_L2, 5) # calculate distance from edge for each pixel
+    mask = (dist > shrink_dist).astype(np.uint8) * 255  # keep only pixels >50px from any edge
+    return mask
 
 
 def track_with_cross_correlation(
@@ -205,91 +88,263 @@ def track_with_cross_correlation(
     cap.release()
     return tracked
 
-def track_with_cross_correlation_full_transform(
-    video_path: str,
-    # roi: tuple,
-    # template: np.ndarray,
-    # origin_center: tuple,
-) -> list[dict]:
+def track_with_homography(video_path: str, best_frame: np.ndarray = None) -> list[dict]:
     """
-    Match `template` in every frame via TM_CCOEFF_NORMED.
-
-    Returns a list of dicts:
-        { frame, center, displacement, match_score }
+    Track motion across frames using ORB feature matching + RANSAC homography.
+    Returns a list of {frame, transform} dicts.
     """
-    # _x, _y, roi_w, roi_h = roi
     cap      = cv2.VideoCapture(video_path)
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     tracked  = []
-    print("using orb detector")
 
-    # convert roi to binary as mask for feature detection
+    # orb = cv2.ORB_create()    
+    # bf  = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+    # FLANN parameters
+    FLANN_INDEX_KDTREE = 1
+    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_params = dict(checks=50)   # or pass empty dictionary
+    
+    # flann = cv2.FlannBasedMatcher(index_params,search_params)
+
+    orb = cv2.SIFT_create()  # try SIFT instead of ORB for better feature detection (but slower)
+    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)  # use L2 norm for SIFT descriptors
+    # orb = cv2.xfeatures2d.FREAK_create()
+    # bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+    # orb = cv2.xfeatures2d.SURF_create(400)
+    # orb = cv2.xfeatures2d.FREAK.create()
+    
     prev_frame = None
-    frame = None
+    prev_kp    = None
+    prev_des   = None
+
+    if best_frame is not None:
+        print("Using provided best_frame for tracking.")
+        mask = gen_mask(best_frame)
+        # detect & describe features in this frame
+        prev_kp, prev_des = orb.detectAndCompute(best_frame, mask=mask)
+        prev_frame = best_frame.copy()
+        
+
 
     for idx in range(n_frames):
         ret, frame = cap.read()
-        print(f"current frame:{idx} / {n_frames}")
         if not ret:
             break
 
-        # change this to somehow track a full transform of the template instead of just a translation (e.g. via feature matching + homography estimation)
+        mask = gen_mask(frame)
 
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame_binary = cv2.threshold(frame_gray, 1, 255, cv2.THRESH_BINARY)[1]
-        # calculate the image moment
-        center = cv2.moments(frame_binary)
-        if center["m00"] != 0:
-            cX = int(center["m10"] / center["m00"])
-            cY = int(center["m01"] / center["m00"])
-        else:
-            cX = 0
-            cY = 0
-            print("whar? but moment")
-
-        # create a mask that is a binary image with a circle at the moment center and is 10% of the frame dims
-        mask = np.zeros_like(frame_gray)
-        radius = int(min(frame.shape[0], frame.shape[1]) * 0.1)
-        cv2.circle(mask, (cX, cY), radius, 255, -1)
-
-        orb = cv2.ORB_create()
-        if prev_frame is not None:
-            kp1, des1 = orb.detectAndCompute(prev_frame, mask=mask)
-        else:
-            prev_frame = frame.copy()
-            des1 = None
-        
+        # detect & describe features in this frame
         kp2, des2 = orb.detectAndCompute(frame, mask=mask)
-        if des1 is None or des2 is None:
-            # fr
-            continue
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-        matches = bf.match(des1, des2)
-        matches = sorted(matches, key=lambda x: x.distance)
 
-        viewer = cv2.drawMatches(prev_frame, kp1, frame, kp2, matches[:20], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-        cv2.imshow("matches", viewer)
-        cv2.waitKey(1)
-        if len(matches) < 4: # 
+        # skip the very first frame — nothing to match against yet
+        if prev_frame is None:
+            prev_frame, prev_kp, prev_des = frame.copy(), kp2, des2
+            tracked.append(None)
             continue
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+        if prev_des is None or des2 is None:
+            prev_frame, prev_kp, prev_des = frame.copy(), kp2, des2
+            tracked.append(None)
+            continue
+
+        # match, draw, filter
+        # flann = cv2.FlannBasedMatcher(index_params,search_params)
+        # matches = flann.knnMatch(prev_des,des2,k=2)
+
+        # --- lowes test for flann
+        # ratio_thresh = 0.7
+        # good_matches = []
+        # for m,n in matches:
+        #     if m.distance < ratio_thresh * n.distance:
+        #         good_matches.append(m)
+        
+        
+        # The standard way
+        matches = sorted(bf.match(prev_des, des2), key=lambda m: m.distance)
+        # viewer  = cv2.drawMatches(prev_frame, prev_kp, frame, kp2,
+        #                    matches[:20], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        # viewer = cv2.drawKeypoints(frame, kp2, None)
+        # draw the mask roi
+        # green = np.zeros_like(viewer)
+        # green[:, :, 1] = mask
+        # viewer = cv2.addWeighted(viewer, 1.0, green, 0.5, 0)
+        # resize_viewer = cv2.resize(viewer, (800, 600))
+        # cv2.imshow("matches", resize_viewer)
+        # cv2.waitKey(1)
+
+        if len(matches) < 4:
+            prev_frame, prev_kp, prev_des = frame.copy(), kp2, des2
+            tracked.append(None)
+            continue
+
+
+        #-- Localize the object
+        # obj = np.empty((len(good_matches),2), dtype=np.float32)
+        # scene = np.empty((len(good_matches),2), dtype=np.float32)
+        # for i in range(len(good_matches)):
+        #     #-- Get the keypoints from the good matches
+        #     obj[i,0] = prev_kp[good_matches[i].queryIdx].pt[0]
+        #     obj[i,1] = prev_kp[good_matches[i].queryIdx].pt[1]
+        #     scene[i,0] = kp2[good_matches[i].trainIdx].pt[0]
+        #     scene[i,1] = kp2[good_matches[i].trainIdx].pt[1]
+        # estimate homography
+
+        src_pts = np.float32([prev_kp[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-        H, _ = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC)
-        prev_frame = frame.copy()
+        # H, what = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC)
+        H, what = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)  # try affine first (translation + rotation + scale)
+        
+        
 
-        if H is [] or H is None:
-            print("whar?")
+        # print(what)
+        if H is None:
+            prev_frame, prev_kp, prev_des = frame.copy(), kp2, des2
+            tracked.append(None)
             continue
+        # 1. Translation: Directly from the last column
+        tx = H[0, 2]
+        ty = H[1, 2]
+        
+        # 2. Scaling: Magnitude of the basis vectors
+        # sx is the length of the first column (x-basis)
+        sx = np.linalg.norm(H[0:2, 0])
+        
+        # sy uses the determinant to correctly identify reflection/flipping
+        det = H[0, 0] * H[1, 1] - H[0, 1] * H[1, 0]
+        sy = det / sx
+        
+        # 3. Rotation: Angle of the first column
+        rotation_rad = np.arctan2(H[1, 0], H[0, 0])
+        rotation_deg = np.degrees(rotation_rad)
+        
+        # 4. Shear: How much the axes are "un-square"
+        shear = (H[0, 0] * H[0, 1] + H[1, 0] * H[1, 1]) / det
+
+        tracked.append({"frame": idx, "transform": H,
+                        "trans X": tx, "trans Y": ty,
+                        "Scale X": sx, "Scale Y": sy,
+                        "rotation_deg": rotation_deg,
+                        "shear": shear})
+
+        if (idx + 1) % 1 == 0 or idx == 0:
+            print(f"  [tracking] {idx + 1}/{n_frames} frames")
+
+    cap.release()
+    return tracked
+
+
+EDGE_MARGIN_RATIO = 0.05
+FEATURE_PARAMS    = dict(maxCorners=200, qualityLevel=0.01, minDistance=30, blockSize=3)
+LK_PARAMS         = dict(winSize=(21, 21), maxLevel=3,
+                         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
+REDETECT_EVERY    = 30
+
+
+def track_with_homography2(video_path: str, best_frame: np.ndarray = None) -> list[dict]:
+    """
+    Track motion across frames using LK optical flow + RANSAC affine transform.
+    Drop-in replacement for the SIFT version — same signature and return format.
+    Returns a list of {frame, transform, ...} dicts (None where tracking failed).
+    """
+    def build_mask(gray: np.ndarray) -> np.ndarray:
+        binary = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)[1]
+        margin = min(gray.shape[:2]) * EDGE_MARGIN_RATIO
+        dist   = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+        return (dist > margin).astype(np.uint8) * 255
+
+    def detect(gray: np.ndarray) -> np.ndarray:
+        pts = cv2.goodFeaturesToTrack(gray, mask=build_mask(gray), **FEATURE_PARAMS)
+        return pts.astype(np.float32) if pts is not None else np.empty((0, 1, 2), np.float32)
+
+    cap      = cv2.VideoCapture(video_path)
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    tracked  = []
+
+    # ── Seed with best_frame if provided ──────────────────────────────────────
+    if best_frame is not None:
+        print("Seeding tracker with provided best_frame.")
+        prev_gray = cv2.cvtColor(best_frame, cv2.COLOR_BGR2GRAY)
+        prev_pts  = detect(prev_gray)
+    else:
+        prev_gray = prev_pts = None
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+    for idx in range(n_frames):
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # First frame with no seed — nothing to track against yet
+        if prev_gray is None:
+            prev_gray, prev_pts = gray, detect(gray)
+            tracked.append(None)
+            continue
+
+        # Re-detect when points run low or on schedule
+        if len(prev_pts) < 10 or idx % REDETECT_EVERY == 0:
+            prev_pts = detect(prev_gray)
+
+        if len(prev_pts) < 4:
+            prev_gray, prev_pts = gray, detect(gray)
+            tracked.append(None)
+            continue
+
+        # Track prev_pts forward into current frame
+        curr_pts, status, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, prev_pts, None, **LK_PARAMS)
+        im_match = cv2.drawMatches(prev_gray, [cv2.KeyPoint(x=p[0][0], y=p[0][1], size=1) for p in prev_pts],
+                        gray, [cv2.KeyPoint(x=p[0][0], y=p[0][1], size=1) for p in curr_pts],
+                        [cv2.DMatch(_queryIdx=i, _trainIdx=i, _distance=0) for i in range(len(prev_pts)) if status[i] == 1],
+                        None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        resize_match = cv2.resize(im_match, (800, 600))
+        cv2.imshow("tracking", resize_match)
+        cv2.waitKey(1)
+        good_old = prev_pts[status == 1]
+        good_new = curr_pts[status == 1]
+
+        if len(good_old) < 4:
+            prev_gray, prev_pts = gray, detect(gray)
+            tracked.append(None)
+            continue
+
+        H, _ = cv2.estimateAffinePartial2D(
+            good_old.reshape(-1, 1, 2),
+            good_new.reshape(-1, 1, 2),
+            method=cv2.RANSAC,
+        )
+
+        if H is None:
+            prev_gray = gray
+            prev_pts  = good_new.reshape(-1, 1, 2)
+            tracked.append(None)
+            continue
+
+        # ── Decompose (identical format to the original) ──────────────────────
+        tx  = H[0, 2]
+        ty  = H[1, 2]
+        sx  = np.linalg.norm(H[0:2, 0])
+        det = H[0, 0] * H[1, 1] - H[0, 1] * H[1, 0]
+        sy  = det / sx if sx != 0 else 0.0
+        rotation_deg = np.degrees(np.arctan2(H[1, 0], H[0, 0]))
+        shear        = (H[0, 0] * H[0, 1] + H[1, 0] * H[1, 1]) / det if det != 0 else 0.0
 
         tracked.append({
             "frame":        idx,
-            # "center":       (cx, cy),
-            # "displacement": (cx - origin_center[0], cy - origin_center[1]),
             "transform":    H,
-            # "match_score":  float(score),
+            "trans X":      tx,
+            "trans Y":      ty,
+            "Scale X":      sx,
+            "Scale Y":      sy,
+            "rotation_deg": rotation_deg,
+            "shear":        shear,
         })
 
-        if (idx + 1) % 10 == 0 or idx == 0:
+        prev_gray = gray
+        prev_pts  = good_new.reshape(-1, 1, 2)
+
+        if (idx + 1) % 30 == 0:
             print(f"  [tracking] {idx + 1}/{n_frames} frames")
 
     cap.release()
@@ -298,27 +353,34 @@ def track_with_cross_correlation_full_transform(
 
 def _save_tracking_csv(tracked_points: list[dict], output_path: str) -> None:
     """Save per-frame tracking data plus mean / std summary rows."""
-    centers = np.array([p["center"] for p in tracked_points])
-    mean    = centers.mean(axis=0)
-    std     = centers.std(axis=0)
+    # fieldnames = ["frame", "center_x", "center_y", "disp_x", "disp_y", "match_score"]
+    # value_types = [type(v) for v in tracked_points[0].values()]
 
-    fieldnames = ["frame", "center_x", "center_y", "disp_x", "disp_y", "match_score"]
+    # centers = np.array([p["center"] for p in tracked_points])
+    # mean = centers.mean(axis=0)
+    # std  = centers.std(axis=0)
+
     with open(output_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
+        writer = csv.DictWriter(f, fieldnames=tracked_points[0].keys())
+        writer.writeheader()
+
         for p in tracked_points:
-            w.writerow({
-                "frame":       p["frame"],
-                "center_x":   p["center"][0],
-                "center_y":   p["center"][1],
-                "disp_x":     p["displacement"][0],
-                "disp_y":     p["displacement"][1],
-                "match_score": p["match_score"],
-            })
-        w.writerow({"frame": "mean", "center_x": mean[0], "center_y": mean[1],
-                    "disp_x": "", "disp_y": "", "match_score": ""})
-        w.writerow({"frame": "std",  "center_x": std[0],  "center_y": std[1],
-                    "disp_x": "", "disp_y": "", "match_score": ""})
+            if p is not None:
+                writer.writerow(p)
+            else:
+                writer.writerow({"frame": "tracking_failed"})
+            # writer.writerow({
+            #     "frame":       p["frame"],
+            #     "center_x":   p["center"][0],
+            #     "center_y":   p["center"][1],
+            #     "disp_x":     p["displacement"][0],
+            #     "disp_y":     p["displacement"][1],
+            #     "match_score": p["match_score"],
+            # })
+
+        # writer.writerow({"frame": "mean", "center_x": mean[0], "center_y": mean[1]})
+        # writer.writerow({"frame": "std",  "center_x": std[0],  "center_y": std[1]})
+
 
 def xCorr_pipeline_debug(
     video_path: str,
@@ -362,12 +424,12 @@ def xCorr_pipeline_debug(
     # ── 3. Motion-tracking video ───────────────────────────────────────────────
     tracking_video = os.path.join(output_dir, "motion_tracking.mp4")
     print(f"\n► Rendering motion-tracking video…\n  → {tracking_video}")
-    _render_tracking_video(video_path, tracked_points, tracking_video, roi)
+    render_tracking_video(video_path, tracked_points, tracking_video, roi)
     
     # stabilize the video based on the tracked points
     stabilized_video = os.path.join(output_dir, "sclera_stabilized_XC.mp4")
     print(f"\n► Rendering stabilized video…\n  → {stabilized_video}")
-    _render_stabilized_video(video_path, tracked_points, stabilized_video)
+    render_stabilized_video(video_path, tracked_points, stabilized_video)
 
     # CSV
     # csv_path = os.path.join(output_dir, "tracking_results.csv")
@@ -383,22 +445,25 @@ def xCorr_pipeline(
     os.makedirs(output_dir, exist_ok=True)
 
     # ── 1. First frame → ROI selection ────────────────────────────────────────
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise IOError(f"Cannot open video: {video_path}")
-    ret, first_frame = cap.read()
-    cap.release()
+
+    idx, template_frame = select_wanted_frame(video_path)
+    print(f"Selected frame index: {idx}")
+
     # select the largest square inscribed within the mask
     # roi, template, origin_center = _get_inscribed_square(first_frame)
     # print("\n► Tracking ROI across all frames (cross-correlation)…")
-    tracked_points = track_with_cross_correlation_full_transform(video_path)
+    tracked_points = track_with_homography2(video_path, best_frame=template_frame)
     # print(f"  Tracked {len(tracked_points)} frames.")
-    print(tracked_points)
+    # print(tracked_points)
 
     print("\n► Rendering stablized video…")
-    _render_stabilized_video(video_path, tracked_points, os.path.join(output_dir, "sclera_stabilized_XC.mp4"))
+    render_stabilized_video(video_path, tracked_points, os.path.join(output_dir, "sclera_stabilized_XC.mp4"))
+    print(f"  Stabilized video → {os.path.join(output_dir, 'sclera_stabilized_XC.mp4')}")
 
-    
+    # write csv
+    csv_path = os.path.join(output_dir, "tracking_results.csv")
+    _save_tracking_csv(tracked_points, csv_path)
+    print(f"\n  Tracking CSV → {csv_path}")
 
 
 
@@ -408,7 +473,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--video",
-        default="output/testing_sclera/sclera_overlay_ML (720p).mp4",
+        default="output\\results_20260502-001448\\sclera_overlay.mp4",
         help="Path to the input video.",
     )
     parser.add_argument(

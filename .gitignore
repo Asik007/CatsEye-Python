@@ -1,3 +1,4 @@
 /runs
 /uploads/frames
-/output
+/output/results_*
+/output/testing_sclera/frames
