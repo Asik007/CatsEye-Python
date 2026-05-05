@@ -2,3 +2,5 @@
 /uploads/frames
 /output/results_*
 /output/testing_sclera/frames
+*.pyc
+/CV_steps/__pycache__

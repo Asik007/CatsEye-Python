@@ -478,7 +478,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="output/testing_sclera/",
+        default="output/jupyter_test/",
         help="Directory to save outputs (motion video + CSV).",
     )
     # parser.add_argument(
@@ -492,7 +492,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    xCorr_pipeline(
+    xCorr_pipeline_debug(
         video_path=args.video,
         output_dir=args.output_dir,
         # smooth_radius=args.smooth_radius,
