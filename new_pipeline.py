@@ -6,17 +6,16 @@ import sys
 import time
 
 
-from line_profiler import profile
+# from line_profiler import profile
 
 import matplotlib.pyplot as plt
 
 import numpy as np
 
-import click
 
-from CV_steps.XCorr import xCorr_pipeline
-from CV_steps.stabilize import stabilize_video
-from CV_steps.sclera import sclera_pipeline
+from CV_steps.XCorr import xCorr_pipeline, xCorr_pipeline_debug
+from CV_steps.stabilize_frame import stabilize_video
+from CV_steps.sclera_IP import sclera_pipeline
 import CV_steps.sclera_ML as sclera_ML
 
 
@@ -25,7 +24,7 @@ import CV_steps.sclera_ML as sclera_ML
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-@profile
+# @profile
 def process_and_stabilize(
     video_path: str,
     output_dir: str,
@@ -96,10 +95,13 @@ def _run_cli() -> None:
     parser = argparse.ArgumentParser(description="Stabilise a video file.")
     parser.add_argument("--video",    default=os.path.join(cwd, "uploads", "output_001.mp4"), help="Path to source video.")
     parser.add_argument("--output",   default=os.path.join(cwd, "output"),                    help="Base output directory.")
+    parser.add_argument("--debug",   default=False, type=bool,                                help="Smoothing radius for stabilisation (in pixels).")
     args = parser.parse_args()
 
     output_dir = os.path.join(args.output, "results_" + time.strftime("%Y%m%d-%H%M%S"))
 
+    print(f"\n► Processing video: {args.video}")
+    print(f" Debug Pipeline: {args.debug}")
     start = time.perf_counter()
     result = process_and_stabilize(args.video, output_dir)
     elapsed = time.perf_counter() - start

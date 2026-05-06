@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from line_profiler import profile
+# from line_profiler import profile
 from typing import Optional
 
 import cv2
@@ -97,7 +97,7 @@ def process_image(
     return mask, overlay
 
 
-@profile
+# @profile
 def process_video(
     video_path: str | Path,
     model_path: str | Path,

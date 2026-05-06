@@ -16,7 +16,7 @@ except ImportError:
 
 DEBUG = False
 
-@profile
+# @profile
 def sclera_pipeline(
     input_path: str, overlay_path: str, mask_path: str, max_workers: int = 4
 ):
@@ -83,7 +83,7 @@ def sclera_pipeline(
     print(f"Saved mask    → {mask_path}")
 
 
-@profile
+# @profile
 def process_eye_pipeline(image: np.ndarray, DEBUG: bool = False):
     # ── 1. Resize ─────────────────────────────────────────────────────────────
     aspect_ratio = image.shape[1] / image.shape[0]
@@ -187,7 +187,7 @@ def process_image(
 
 if __name__ == "__main__":
     print("why am I running?")
-    from stabilize import stabilize_video
+    from CV_steps.stabilize_frame import stabilize_video
 
     image_path = (
         Path(__file__).resolve().parent.parent / "uploads" / "frames" / "frame_0011.png"

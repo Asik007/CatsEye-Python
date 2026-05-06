@@ -266,3 +266,16 @@ def select_wanted_frame(
     cap.release()
     cv2.destroyAllWindows()
     return idx, best_frame
+
+
+def show(img_rgb, scale_factor=0.25, title=None):
+    from PIL import Image
+    from IPython.display import display
+
+    # if greyscale, convert to RGB
+    if len(img_rgb.shape) == 2:
+        img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_GRAY2RGB)
+    img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
+    scaled_img = cv2.resize(img_rgb, (img_rgb.shape[1] // int(1/scale_factor), img_rgb.shape[0] // int(1/scale_factor)))
+    display(Image.fromarray(scaled_img))
+    return scaled_img
