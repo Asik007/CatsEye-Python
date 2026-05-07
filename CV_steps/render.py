@@ -1,5 +1,7 @@
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 
 def _longest_continuous_segment(
@@ -112,6 +114,56 @@ def _render_tracking_video(
     cap.release()
     writer.release()
 
+
+def render_tiff(
+    video_path: str,
+    tracked_points: list[dict],
+    output_path: str,
+    best_frame_idx: int | None = None,
+) -> None:
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    # writer = cv2.VideoWriter(output_path, fourcc, fps, (w, h))'
+    output_dir = os.path.join(os.path.dirname(output_path), "tiff_frames")
+    os.makedirs(output_dir, exist_ok=True)
+
+    segment = _longest_continuous_segment(tracked_points, best_frame_idx)
+    start_frame = segment[0]["frame"]
+    end_frame = segment[-1]["frame"]
+    print(f"  [render] using continuous frames {start_frame}..{end_frame} ({len(segment)} frames)")
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    for segment_idx, point in enumerate(segment):
+        # frame_idx = point["frame"]
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # print(f"Frame {frame_idx}")
+        # print(f"matrix: {segment_idx} / {len(segment)}")
+        # print(f"M shape: {M.shape}")
+
+        
+        #  shift the frame in the opposite direction of the displacement to stabilize
+        # M = np.float32([[1, 0, -del_x], [0, 1, -del_y]])
+        # frame = cv2.warpAffine(frame, M, (w, h))
+        # test a homography-based stabilization (not currently better than simple translation)
+        # src_pts = np.float32([tracked_points[idx]["center"]])
+        # dst_pts = np.float32([tracked_points[0]["center"]])
+        # H, _ = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC)
+        # if its a homography matrix, use warpPerspective; if it's affine, use warpAffine
+
+        cv2.imwrite(os.path.join(output_dir, f"frame_{point['frame']}.tiff"), frame)
+
+        if (segment_idx + 1) % 50 == 0:
+            print(f"  [render]   {segment_idx + 1}/{len(segment)} frames written")
+
+    cap.release()
 
 def _render_stabilized_video(
     video_path: str,
@@ -279,3 +331,36 @@ def show(img_rgb, scale_factor=0.25, title=None):
     scaled_img = cv2.resize(img_rgb, (img_rgb.shape[1] // int(1/scale_factor), img_rgb.shape[0] // int(1/scale_factor)))
     display(Image.fromarray(scaled_img))
     return scaled_img
+
+def render_compare(im0, im1, img_transformed, output_dir = "output"):
+    # Create a figure to display the images side by side, a difference image, and a blended image. These are gray images.
+    fig, axes = plt.subplots(2, 2, figsize=(20, 5))
+    axes[0, 0].imshow(cv2.cvtColor(im0, cv2.COLOR_GRAY2RGB))
+    axes[0, 0].set_title("Image 1")
+    axes[0, 0].axis("off")
+    axes[1, 1].imshow(cv2.cvtColor(im1, cv2.COLOR_GRAY2RGB))
+    axes[1, 1].set_title("Image 2")
+    axes[1, 1].axis("off")
+    axes[0, 1].imshow(cv2.cvtColor(img_transformed, cv2.COLOR_GRAY2RGB))
+    axes[0, 1].set_title("Transformed Image")
+    axes[0, 1].axis("off")
+    # Compute absolute difference and blended image
+    diff = cv2.absdiff(im0, im1)
+    blended = cv2.addWeighted(im0, 0.5, im1, 0.5, 0)
+    # error = (np.square(np.mean(diff)))
+    # print(error)
+    axes[1, 0].imshow(cv2.cvtColor(diff, cv2.COLOR_GRAY2RGB))
+    axes[1, 0].set_title("Absolute Difference")
+    axes[1, 0].axis("off")
+    # axes[1, 2].imshow(cv2.cvtColor(blended, cv2.COLOR_GRAY2RGB))
+    # axes[1, 2].set_title("Blended Image")
+    # axes[1, 2].axis("off")
+    # axes[0, 2].axis("off")  # hide the empty subplot
+    # axes[0, 2].set_title("Error")
+    # axes[0, 2].imshow(cv2.normalize(error, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX), cmap='gray', vmin=0, vmax=255)
+
+
+    plt.savefig(f'{output_dir}/my_plot.png')  # Saves to specified directory
+    plt.tight_layout()
+    plt.show()
+    return

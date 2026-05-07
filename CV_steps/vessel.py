@@ -1,16 +1,29 @@
 import numpy as np
 import cv2
-from CV_steps.XCorr import gen_mask
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 input_frame = r"C:\Users\dragon\Code\CatsEye-Python\output\testing_sclera\frames\frame090.png"
 off_frame = r"C:\Users\dragon\Code\CatsEye-Python\output\testing_sclera\frames\frame003.png"
 RADIUS = 705
 
+def gen_mask(
+    frame: np.ndarray,
+    ) -> np.ndarray:
+    
+    frame_gray   = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    frame_binary = cv2.threshold(frame_gray, 1, 255, cv2.THRESH_BINARY)[1]
+
+    # shrink it by 50 px (MAKE THIS DEPENDENT ON THE SIZE OF THE VIDEO — 50px is arbitrary and may not work for all resolutions)
+    shrink_dist = min(frame.shape[1] * 0.1, frame.shape[0] * 0.1)
+    dist = cv2.distanceTransform(frame_binary, cv2.DIST_L2, 5) # calculate distance from edge for each pixel
+    mask = (dist > shrink_dist).astype(np.uint8) * 255  # keep only pixels >50px from any edge
+    return mask
+
 
 def normalize_and_enhance(
     image_bgr, 
-    mask, 
+    mask = None, 
     sigma_x=51, 
     scale=128, 
     clip_limit=10.0, 
@@ -31,6 +44,9 @@ def normalize_and_enhance(
         Masked and enhanced image
     """
     # Estimate background as slow-varying Gaussian blur
+    if mask is None:
+        mask = gen_mask(image_bgr)
+
     bg_model = cv2.GaussianBlur(image_bgr, (0, 0), sigmaX=sigma_x)
 
     image_float = image_bgr.astype(np.float32) + 1.0

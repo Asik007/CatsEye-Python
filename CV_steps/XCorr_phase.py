@@ -1,5 +1,9 @@
+import time
+
+from render import render_compare
 import cv2
 import numpy as np
+import os
 
 # ----------------------------------------------------------------------
 # Helper functions – each mimics a specific utility from imreg_dft
@@ -92,11 +96,11 @@ def _phasecorr_logpolar(lp1, lp2, out_shape, max_radius):
     # angle: horizontal shift
     angle = -dx * 360.0 / w
 
-    # scale: vertical shift → factor in log-polar → image scale = 1 / spectral scale
-    scale_spectrum = np.exp(dy * np.log(max_radius) / (h - 1))
-    scale_img = 1.0 / scale_spectrum
+    # # scale: vertical shift → factor in log-polar → image scale = 1 / spectral scale
+    # scale_spectrum = np.exp(dy * np.log(max_radius) / (h - 1))
+    # scale_img = 1.0 / scale_spectrum
 
-    return angle, scale_img, response
+    return angle, response
 
 
 def _rigid_transform(img, angle_deg, scale, center):
@@ -132,7 +136,8 @@ def imreg_dft_emulate(
     subject,
     upscale_factor=None,
     logpolar_size=(360, 360),
-    highpass_sigma=1.5
+    highpass_sigma=1.5,
+    output_dir="output"
 ):
     """
     Emulates the image registration pipeline of imreg_dft.
@@ -159,7 +164,6 @@ def imreg_dft_emulate(
         't_img'  : registered subject image, cropped and scaled back to the
                    original template dimensions.
     """
-
     # ---------------------------------------------------------------
     # Step 1: Load images (here already provided as numpy arrays)
     # Convert to grayscale float32 – imreg_dft works internally in
@@ -175,17 +179,6 @@ def imreg_dft_emulate(
     else:
         subject_g = subject.astype(np.float32)
 
-    # ---------------------------------------------------------------
-    # Step 2: Optional upsampling (resample) – increases resolution
-    # for sub‑pixel accuracy, mimics imreg_dft.tiles.resample().
-    # ---------------------------------------------------------------
-    if upscale_factor is not None and upscale_factor != 1.0:
-        template_g = cv2.resize(template_g, None,
-                                fx=upscale_factor, fy=upscale_factor,
-                                interpolation=cv2.INTER_LINEAR)
-        subject_g = cv2.resize(subject_g, None,
-                               fx=upscale_factor, fy=upscale_factor,
-                               interpolation=cv2.INTER_LINEAR)
 
     # Remember the original template dimensions *before* extension.
     # They will be used to crop the final registered image back to
@@ -225,7 +218,12 @@ def imreg_dft_emulate(
 
     # Compute Fourier magnitude spectra (centered via fftshift)
     F1 = np.fft.fftshift(np.fft.fft2(tap))
+    # remap the magnitude to [0, 255] for visualization (optional)
+    F1_img = cv2.normalize(np.log(np.abs(F1) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "F1.png"), F1_img)  # for visualization
     F2 = np.fft.fftshift(np.fft.fft2(sap))
+    F2_img = cv2.normalize(np.log(np.abs(F2) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "F2.png"), F2_img)  # for visualization
     mag1, mag2 = np.abs(F1), np.abs(F2)
 
     # Log-polar parameters: centre at the image centre, radius up to
@@ -237,17 +235,25 @@ def imreg_dft_emulate(
 
     # 5b: Log-polar transform of the magnitude spectra
     lp1 = _logpolar(mag1, center, lp_shape, max_radius)
+    lp1_img = cv2.normalize(np.log(np.abs(lp1) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "LP1.png"), lp1_img)  # for visualization
     lp2 = _logpolar(mag2, center, lp_shape, max_radius)
+    lp2_img = cv2.normalize(np.log(np.abs(lp2) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "LP2.png"), lp2_img)  # for visualization
 
     # 5c: High-pass filter the log-polar images (imreg_dft's
     # _logpolar_filter() effectively does this to remove remaining
     # low-frequency bias).
     lp1 = _highpass(lp1, sigma=highpass_sigma)
+    lp1_filt_img = cv2.normalize(np.log(np.abs(lp1) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "LP1_filtered.png"), lp1_filt_img)  # for visualization
     lp2 = _highpass(lp2, sigma=highpass_sigma)
+    lp2_filt_img = cv2.normalize(np.log(np.abs(lp2) + 1), None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+    # cv2.imwrite(os.path.join(output_dir, "LP2_filtered.png"), lp2_filt_img)  # for visualization
 
     # 5d: Perform phase correlation on the log-polar images to obtain
     # angle and scale estimates.
-    angle_est, scale_est, _ = _phasecorr_logpolar(lp1, lp2, lp_shape, max_radius)
+    angle_est, _ = _phasecorr_logpolar(lp1, lp2, lp_shape, max_radius)
 
     # ---------------------------------------------------------------
     # Step 6: Translation refinement (imreg_dft.imreg.translation())
@@ -256,7 +262,7 @@ def imreg_dft_emulate(
     # it is roughly aligned to the template.  This uses the inverse
     # transform (we undo the observed rotation/scale).
     center_img = (w / 2, h / 2)
-    sub_aligned = _rigid_transform(subject_f, -angle_est, 1.0 / scale_est, center_img)
+    sub_aligned = _rigid_transform(subject_f, -angle_est, 1.0, center_img)
 
     # Re‑apodize both images before the translation phase correlation.
     tap2 = _apodize(template_f)
@@ -291,8 +297,9 @@ def imreg_dft_emulate(
     # ---------------------------------------------------------------
     result = {
         'angle': angle_final,
-        'scale': scale_est,
-        'tvec': tvec,
+        # 'scale': scale_est,
+        'trans_x': tvec[0],
+        'trans_y': tvec[1],
         'success': success,
     }
 
@@ -303,38 +310,55 @@ def imreg_dft_emulate(
     # just like imreg_dft’s post-processing.
     # ---------------------------------------------------------------
     # Apply final rotation, scale and translation
-    sub_final = _rigid_transform(subject_f, -angle_final, 1.0 / scale_est, center_img)
+    sub_final = _rigid_transform(subject, -angle_final, 1.0, center_img)
     sub_final = _translate(sub_final, tvec[0], tvec[1])
 
     # Undo upscaling (if applied) and crop to original template size
     # (unextend_by).
-    if upscale_factor is not None and upscale_factor != 1.0:
-        orig_ow, orig_oh = int(orig_w / upscale_factor), int(orig_h / upscale_factor)
-        sub_final = cv2.resize(sub_final, (orig_oh, orig_ow),
-                               interpolation=cv2.INTER_LINEAR)
+    # if upscale_factor is not None and upscale_factor != 1.0:
+    #     orig_ow, orig_oh = int(orig_w / upscale_factor), int(orig_h / upscale_factor)
+    #     sub_final = cv2.resize(sub_final, (orig_oh, orig_ow),
+    #                            interpolation=cv2.INTER_LINEAR)
 
     sub_final = sub_final[:orig_h, :orig_w]   # remove zero‑padding
     result['t_img'] = sub_final
+    M = cv2.getRotationMatrix2D(center_img, -angle_final, 1.0)
+    M[0, 2] += tvec[0]  # add translation to the rotation matrix
+    M[1, 2] += tvec[1]
 
-    return result
+    result['transform'] = M
+    # render_compare(template_g, subject_g,sub_final, output_dir)
+
+    return result, sub_final
 
 
 # ----------------------------------------------------------------------
 # Example usage (same as before)
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
-    tmpl = cv2.imread('result2.png', cv2.IMREAD_GRAYSCALE)
-    subj = cv2.imread('result1.png', cv2.IMREAD_GRAYSCALE)
+    input_frame = r"C:\Users\dragon\Code\CatsEye-Python\output\testing_sclera\frames\frame130.png"
+    off_frame = r"C:\Users\dragon\Code\CatsEye-Python\output\testing_sclera\frames\frame003.png"
+
+    tmpl = cv2.imread(input_frame, cv2.IMREAD_GRAYSCALE)
+    subj = cv2.imread(off_frame, cv2.IMREAD_GRAYSCALE)
+
+
 
     if tmpl is None or subj is None:
         print("Place 'template.png' and 'subject.png' in the working directory.")
     else:
-        res = imreg_dft_emulate(tmpl, subj, upscale_factor=2.0)
+        output = "output"
+        output_dir = os.path.join(output, "results_" + time.strftime("%Y%m%d-%H%M%S"))
+        print(f"Saving results to: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
+        res = imreg_dft_emulate(tmpl, subj, upscale_factor=2.0, output_dir=output_dir)
         print(f"Angle: {res['angle']:.2f}°")
-        print(f"Scale: {res['scale']:.4f}")
-        print(f"Translation: {res['tvec']}")
+        # print(f"Scale: {res['scale']:.4f}")
+        print(f"Translation: ({res['trans_x']}, {res['trans_y']})")
         print(f"Peak response: {res['success']:.3f}")
 
-        cv2.imwrite("registered_subject.png", res['t_img'].astype(np.uint8))
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        cv2.imwrite(os.path.join(output_dir, "registered_subject.png"), res['t_img'].astype(np.uint8))
+        cv2.imwrite(os.path.join(output_dir, "template.png"), tmpl.astype(np.uint8))
+        cv2.imwrite(os.path.join(output_dir, "subject.png"), subj.astype(np.uint8))
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()

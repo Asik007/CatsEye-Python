@@ -1,4 +1,7 @@
 import argparse
+from render import render_tiff
+from vessel import normalize_and_enhance
+from XCorr_phase import imreg_dft_emulate
 import cv2
 import numpy as np
 import os
@@ -385,6 +388,44 @@ def track_with_homography2(video_path: str, best_frame: np.ndarray = None) -> li
     cap.release()
     return tracked
 
+def track_with_phase(
+    video_path: str,
+    template: np.ndarray,
+    output_dir: str,
+) -> list[dict]:
+    """
+    Placeholder for phase correlation tracking method.
+    Returns a list of dicts:
+        { frame, center, displacement, match_score }
+    """
+    # For now, just return empty tracking data for each frame
+    cap      = cv2.VideoCapture(video_path)
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    tracked = []
+    prev_tmp = None
+
+    if template is not None:
+        prev_tmp  = normalize_and_enhance(template)
+    else:
+        print("Warning: No template provided for phase correlation tracking. Results will be empty.")
+
+
+    for idx in range(n_frames):
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        result, _   = imreg_dft_emulate(normalize_and_enhance(frame, gen_mask(frame)), prev_tmp, output_dir=output_dir)
+
+        result["frame"] = idx
+
+        tracked.append(result)
+
+        if (idx + 1) % 10 == 0 or idx == 0:
+            print(f"  [tracking] {idx + 1}/{n_frames} frames")
+
+    cap.release()
+    return tracked
 
 def _save_tracking_csv(tracked_points: list[dict], output_path: str) -> None:
     """Save per-frame tracking data plus mean / std summary rows."""
@@ -417,7 +458,7 @@ def _save_tracking_csv(tracked_points: list[dict], output_path: str) -> None:
         # writer.writerow({"frame": "std",  "center_x": std[0],  "center_y": std[1]})
 
 
-def xCorr_pipeline_debug(
+def xCorr_pipeline_OG(
     video_path: str,
     output_dir: str,
 ) -> dict:
@@ -472,7 +513,7 @@ def xCorr_pipeline_debug(
     # print(f"\n  Tracking CSV → {csv_path}")
     return
 
-def xCorr_pipeline(
+def xCorr_pipeline_Homo(
     video_path: str,
     output_dir: str,
 ):
@@ -499,6 +540,37 @@ def xCorr_pipeline(
     csv_path = os.path.join(output_dir, "tracking_results.csv")
     _save_tracking_csv(tracked_points, csv_path)
     print(f"\n  Tracking CSV → {csv_path}")
+
+def xCorr_pipeline_Phase(
+    video_path: str,
+    output_dir: str,
+):
+    # ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ── 1. First frame → ROI selection ────────────────────────────────────────
+
+    idx, template_frame = select_wanted_frame(video_path)
+    print(f"Selected frame index: {idx}")
+
+    # select the largest square inscribed within the mask
+    # roi, template, origin_center = _get_inscribed_square(first_frame)
+    # print("\n► Tracking ROI across all frames (cross-correlation)…")
+    tracked_points = track_with_phase(video_path, template_frame, output_dir=output_dir)
+    print(f"  Tracked {len(tracked_points)} frames.")
+    # print(tracked_points)
+
+    print("\n► Rendering stablized video…")
+    render_tiff(video_path, tracked_points, output_dir)
+    
+    # render_stabilized_video(video_path, tracked_points, os.path.join(output_dir, "sclera_stabilized_XC.mp4"))
+    print(f"  Stabilized video → {os.path.join(output_dir, 'sclera_stabilized_XC.mp4')}")
+
+    # write csv
+    csv_path = os.path.join(output_dir, "tracking_results.csv")
+    _save_tracking_csv(tracked_points, csv_path)
+    print(f"\n  Tracking CSV → {csv_path}")
+
 
 
 
@@ -527,7 +599,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    xCorr_pipeline_debug(
+    xCorr_pipeline_Phase(
         video_path=args.video,
         output_dir=args.output_dir,
         # smooth_radius=args.smooth_radius,
