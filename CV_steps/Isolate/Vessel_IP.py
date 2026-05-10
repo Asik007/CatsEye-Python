@@ -69,24 +69,4 @@ def normalize_and_enhance(
     return mask_img_bgr
 
 
-# ── Load and Preprocess Images ────────────────────────────────────────────────
-img_in = cv2.imread(input_frame)
-img_off = cv2.imread(off_frame)
-
-if img_in is None or img_off is None:
-    raise FileNotFoundError(f"Could not load images:\n  {input_frame}\n  {off_frame}")
-
-# Generate masks for both images
-mask = gen_mask(img_in)
-mask_off = gen_mask(img_off)
-
-# Normalize and enhance
-result = normalize_and_enhance(img_in, mask)
-result2 = normalize_and_enhance(img_off, mask_off)
-
-result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-result2 = cv2.cvtColor(result2, cv2.COLOR_BGR2GRAY)
-
-cv2.imwrite("result1.png", result)
-cv2.imwrite("result2.png", result2)
 

@@ -1,0 +1,35 @@
+import cv2
+import numpy as np
+
+def select_roi_scaling(img: np.ndarray, shrink: tuple = (0.5, 0.5)) -> tuple:
+    """
+    Show the first frame and let the user draw an ROI rectangle.
+    Returns (x, y, w, h), template crop, and center point.
+    """
+    window_name = "Select ROI  –  Enter / Space to confirm"
+
+    if max(shrink) <= 1.0:
+        shrink_scale = shrink
+    else:
+        org_shape = img.shape[:2][::-1]  # (w, h)
+        shrink_scale = org_shape / shrink
+        
+    display_img = cv2.resize(img, (0, 0), fx=shrink_scale, fy=shrink_scale)
+    roi = cv2.selectROI(window_name, display_img, showCrosshair=False, fromCenter=False)
+    cv2.destroyWindow(window_name)
+    print(f"Selected ROI (on displayed image): {roi}")
+
+    # scale back up to original image coordinates
+    x,y,w,h = (np.array(roi) / shrink_scale).astype(int)
+
+    if w <= 0 or h <= 0:
+        raise ValueError("No ROI selected.")
+    template = img[y : y + h, x : x + w].copy()
+    
+    # center   = (x + w // 2, y + h // 2)
+
+    return (x, y, w, h), template
+
+
+
+#TODO: add a function to automatically adjust processing of high-quality videos and images

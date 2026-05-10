@@ -11,10 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-from CV_steps.registration import xCorr_pipeline, xCorr_pipeline_debug
-from CV_steps.stabilize_frame import stabilize_video
-from CV_steps.sclera_IP import sclera_pipeline
-import CV_steps.sclera_ML as sclera_ML
+from CV_steps.Register.registration import xCorr_pipeline, xCorr_pipeline_debug
+from CV_steps.Register.stabilize_frame import stabilize_video
+from CV_steps.Isolate.sclera_IP import sclera_pipeline
+import CV_steps.Isolate.sclera_ML as sclera_ML
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,41 +1,21 @@
 import argparse
-from render import render_tiff
-from vessel import normalize_and_enhance
-from XCorr_phase import imreg_dft_emulate
+from CV_steps.Render.render import render_tiff
+from CV_steps.Isolate.Vessel_IP import normalize_and_enhance
+from CV_steps.Register.XCorr_phase import imreg_dft_emulate
 import cv2
 import numpy as np
 import os
 import csv
 
 try:
-    from CV_steps.render import render_tracking_video, render_stabilized_video, select_wanted_frame
+    from CV_steps.Render.render import render_tracking_video, render_stabilized_video, select_wanted_frame
 except ImportError as e:
-    from render import render_tracking_video, render_stabilized_video, select_wanted_frame
+    from CV_steps.Render.render import render_tracking_video, render_stabilized_video, select_wanted_frame
 
-def _select_roi(first_img: np.ndarray):
-    """
-    Show the first frame and let the user draw an ROI rectangle.
-    Returns (x, y, w, h), template crop, and center point.
-    """
-    window_name = "Select ROI  –  Enter / Space to confirm"
-    shrink = 0.5
-    display_img = cv2.resize(first_img, (0, 0), fx=shrink, fy=shrink)
-    roi = cv2.selectROI(window_name, display_img, showCrosshair=False, fromCenter=False)
-    cv2.destroyWindow(window_name)
-    print(f"Selected ROI (on displayed image): {roi}")
-    # x, y, w, h = map(int, roi)
-    # scale back up to original image coordinates
-    x,y,w,h = (np.array(roi) / shrink).astype(int)
-    # x, y, w, h = scaled_roi
 
-    if w <= 0 or h <= 0:
-        raise ValueError("No ROI selected.")
-    template = first_img[y : y + h, x : x + w].copy()
-    center   = (x + w // 2, y + h // 2)
-    return (x, y, w, h), template, center
 
-def _get_inscribed_square(first_img: np.ndarray) -> tuple:
-    mask = cv2.cvtColor(first_img, cv2.COLOR_BGR2GRAY)
+def _get_inscribed_square(img: np.ndarray) -> tuple:
+    mask = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     M = cv2.moments(mask)
 
     # Calculate x,y coordinate of center

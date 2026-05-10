@@ -1,0 +1,1 @@
+THis is where all the stuff about opening various images goes

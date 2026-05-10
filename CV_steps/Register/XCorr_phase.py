@@ -1,6 +1,6 @@
 import time
 
-from render import render_compare
+from CV_steps.Render.render import render_compare
 import cv2
 import numpy as np
 import os
