@@ -5,16 +5,15 @@ import time
 
 
 # from line_profiler import profile
-
-import matplotlib.pyplot as plt
-
-import numpy as np
-
-
-from CV_steps.Register.registration import xCorr_pipeline, xCorr_pipeline_debug
 from CV_steps.Register.stabilize_frame import stabilize_video
-from CV_steps.Isolate.sclera_IP import sclera_pipeline
-import CV_steps.Isolate.sclera_ML as sclera_ML
+from CV_steps.Isolate.pipeline import process_video_ml
+
+# TODO (REORG): Review and tidy this top-level runner.
+# - Move heavy processing logic into small importable functions
+#   so `new_pipeline.py` stays a thin CLI runner.
+# - Update imports to match new module layout per REORG_PLAN.md.
+# - Ensure each step returns structured outputs (paths, metadata).
+# See: REORG_PLAN.md -> "Main Structure" and "First Cleanup Order".
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -47,7 +46,14 @@ def process_and_stabilize(
     # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
     overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
     mask_path = os.path.join(output_dir, "sclera_mask.mp4")
-    sclera_ML.process_video( video_path=video_path, output_mask_path=mask_path, output_overlay_path=overlay_path,model_path="ML_stuff/best.pt", conf=0.25, imgsz=512)
+    process_video_ml(
+        video_path=video_path,
+        model_path="ML_stuff/best.pt",
+        output_mask_path=mask_path,
+        output_overlay_path=overlay_path,
+        conf=0.25,
+        imgsz=512,
+    )
 
     # XCorr tracking + video render
     # Each on of these steps opens the video independently, but each step must come after the previous one finishes to ensure the video file is not being accessed by multiple processes at once.
@@ -68,7 +74,7 @@ def process_and_stabilize(
     # ── 4. Stabilisation ──────────────────────────────────────────────────────
     stabilized_video = os.path.join(output_dir, "stabilized.mp4")
     print(f"\n► Stabilising video (smooth_radius={smooth_radius})…\n  → {stabilized_video}")
-    xCorr_pipeline(overlay_path, stabilized_video)
+    stabilize_video(overlay_path, stabilized_video, smoothing_radius=smooth_radius)
 
     return {
         # "tracking_video":   tracking_video,

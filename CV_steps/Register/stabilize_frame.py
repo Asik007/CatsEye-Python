@@ -6,6 +6,12 @@ import numpy as np
 
 DEBUG = True
 
+# TODO (REORG): Cleanup and make this a reusable stabilizer module.
+# TODO Extract CLI wrapper into a thin `main()` and keep `stabilize_video()` importable.
+# TODO Parameterize mask shrink threshold and border handling (avoid hard-coded 300 px).
+# TODO Add `border_mode` option (crop / black / reflect) and document behavior.
+#  TODO: Reduce duplication with `stabilize_sclera.py` by centralizing shared helpers.
+
 
 def _calc_transform(args) -> np.ndarray:
     """Calculate affine transform between two consecutive grayscale frames."""

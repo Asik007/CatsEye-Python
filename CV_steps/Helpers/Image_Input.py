@@ -14,7 +14,7 @@ def select_roi_scaling(img: np.ndarray, shrink: tuple = (0.5, 0.5)) -> tuple:
         org_shape = img.shape[:2][::-1]  # (w, h)
         shrink_scale = org_shape / shrink
         
-    display_img = cv2.resize(img, (0, 0), fx=shrink_scale, fy=shrink_scale)
+    display_img = cv2.resize(img, (0, 0), fx=shrink_scale[0], fy=shrink_scale[1])
     roi = cv2.selectROI(window_name, display_img, showCrosshair=False, fromCenter=False)
     cv2.destroyWindow(window_name)
     print(f"Selected ROI (on displayed image): {roi}")
@@ -31,5 +31,3 @@ def select_roi_scaling(img: np.ndarray, shrink: tuple = (0.5, 0.5)) -> tuple:
     return (x, y, w, h), template
 
 
-
-#TODO: add a function to automatically adjust processing of high-quality videos and images

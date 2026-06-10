@@ -19,9 +19,12 @@ A lightweight computer-vision pipeline for isolating and stabilising the sclera 
 - `guh.py` — Small test script for stabilising mask videos (example / debug).
 - `CV_steps/` — Modular CV functions used by the pipeline:
 	- `sclera_ML.py` — ML-based sclera/mask extraction and overlay rendering.
-	- `XCorr.py` — Cross-correlation based motion-tracking pipeline.
-	- `stabilize_frame.py` — Video stabilisation utilities.
-	- other helpers: `render.py`, `vessel.py`, `stabilize_sclera.py`, etc.
+	- `Register/XCorr_phase.py` — Phase-based registration and tracking helpers.
+	- `Register/registration.py` — Cross-correlation / homography tracking pipeline.
+	- `Register/stabilize_frame.py` — Video stabilisation utilities.
+	- `Render/render.py` — Video rendering helpers.
+	- `Isolate/Vessel_IP.py` — Classical vessel enhancement utilities.
+	- `Isolate/sclera_IP.py` and `Isolate/sclera_ML.py` — Sclera extraction pipelines.
 - `ML_stuff/` — ML model and helpers (`best.pt` is the trained ultralytics model used by `sclera_ML`).
 - `output/` — Example outputs and previously-run result folders.
 
@@ -63,7 +66,7 @@ This script reads `output/jupyter_test/sclera_mask.mp4` (or adjust the paths ins
 ## Development notes
 - The pipeline is modular — individual steps in `CV_steps/` can be imported and run separately for debugging.
 - The ML model path is `ML_stuff/best.pt` by default; change paths or `conf/imgsz` parameters in `new_pipeline.py` when needed.
-- Cross-correlation based tracking is implemented in `CV_steps/XCorr.py` and can be enabled / customised there.
+- Cross-correlation based tracking is implemented in `CV_steps/Register/registration.py` and related helpers under `CV_steps/Register/`.
 
 ## Outputs
 - `sclera_overlay.mp4` — original frames with overlay/ROI visuals from the ML step.
