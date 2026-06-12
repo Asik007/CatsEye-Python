@@ -5,7 +5,7 @@ import time
 
 
 # from line_profiler import profile
-from CV_steps.Register.stabilize_frame import stabilize_video
+from CV_steps.stabilize_frame import stabilize_video
 from CV_steps.Isolate.pipeline import process_video_ml
 
 # TODO (REORG): Review and tidy this top-level runner.
@@ -100,6 +100,8 @@ def _run_cli() -> None:
     parser.add_argument("--video",    default=os.path.join(cwd, "uploads", "output_001.mp4"), help="Path to source video.")
     parser.add_argument("--output",   default=os.path.join(cwd, "output"),                    help="Base output directory.")
     parser.add_argument("--debug",   default=False, type=bool,                                help="Smoothing radius for stabilisation (in pixels).")
+    parser.add_argument("--tiif-output", default=False, type=bool, help="Save tracking data to stacked tiff.")
+    parser.add_argument("--chosen-frame",default=0, type=int, help="Chosen frame." ) # make this into slider in the GUI version
     args = parser.parse_args()
 
     output_dir = os.path.join(args.output, "results_" + time.strftime("%Y%m%d-%H%M%S"))

@@ -24,7 +24,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from .Sclera_IP import process_eye_pipeline
+# from .Sclera_IP import process_eye_pipeline
 from .Sclera_ML import load_segmentation_model, process_image as ml_process_image
 
 

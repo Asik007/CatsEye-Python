@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from CV_steps.Register.registration import chosen_pipeline
+from CV_steps.registration import chosen_pipeline
 
 
 DEFAULT_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".wmv", ".m4v"}
