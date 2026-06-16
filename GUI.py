@@ -47,10 +47,11 @@ class VideoProcessorFrame(wx.Frame):
         self._bind_events()
 
         # Check imports and warn if needed
-        if not IMPORTS_AVAILABLE:
-            self._log(f"⚠ Warning: Pipeline modules not available:\n  {IMPORT_ERROR}")
-            self._log("  You can still use this interface, but processing will fail.")
-            self._log("  Ensure all dependencies are installed and paths are correct.\n")
+
+        # if not IMPORTS_AVAILABLE:
+        self._log(f"⚠ Warning: Pipeline modules not available:\n")
+        self._log("  You can still use this interface, but processing will fail.")
+        self._log("  Ensure all dependencies are installed and paths are correct.\n")
 
         # Center on screen
         self.Centre()

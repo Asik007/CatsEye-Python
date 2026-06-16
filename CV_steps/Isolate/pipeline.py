@@ -33,22 +33,6 @@ from .Sclera_ML import load_segmentation_model, process_image as ml_process_imag
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def process_image_ip(image_path: str) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Process a single image using classical image processing (Sclera_IP).
-
-    Args:
-        image_path: Path to input image
-
-    Returns:
-        (eye_mask, overlay) tuple
-    """
-    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if image is None:
-        raise FileNotFoundError(f"Cannot read image: {image_path}")
-    return process_eye_pipeline(image=image)
-
-
 def process_image_ml(
     image_path: str,
     model_path: str,
@@ -304,15 +288,17 @@ def run_video(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+
     parser = argparse.ArgumentParser(
         description="Isolate sclera from images/videos using IP or ML methods."
     )
-    parser.add_argument(
-        "--mode",
-        choices=["ip", "ml"],
-        default="ml",
-        help="Isolation method: 'ip' (classical) or 'ml' (YOLO)",
-    )
+
+    # parser.add_argument(
+    #     "--mode",
+    #     choices=["ip", "ml"],
+    #     default="ml",
+    #     help="Isolation method: 'ip' (classical) or 'ml' (YOLO)",
+    # )
     parser.add_argument("--image", help="Input image path (single image mode)")
     parser.add_argument("--video", help="Input video path")
     parser.add_argument(
