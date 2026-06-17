@@ -12,6 +12,7 @@ Requirements:
 import wx
 import os
 import threading
+import cv2
 import time
 from pathlib import Path
 from typing import Optional, Dict
@@ -31,15 +32,20 @@ IMPORTS_AVAILABLE = True
 class VideoProcessorFrame(wx.Frame):
     """Main application window for the video processing pipeline."""
 
+    frame_idx = 0
+    frame_img = wx.NullBitmap
     def __init__(self):
         super().__init__(
             parent=None,
-            title="Video Processor — Sclera Isolation & Stabilization",
-            size=(900, 750)
+            title="Video Processor -- CatsEye",
+            size=wx.Size(900, 750)
         )
 
         self.processing = False
         self.worker_thread: Optional[threading.Thread] = None
+        # self.frame_index = 0
+        # self.image_panel: Optional[wx.StaticBitmap] = None
+        # self.original_bitmap: Optional[wx.Bitmap] = None
 
         # Create the UI
         self._create_ui()
@@ -47,11 +53,10 @@ class VideoProcessorFrame(wx.Frame):
         self._bind_events()
 
         # Check imports and warn if needed
-
-        # if not IMPORTS_AVAILABLE:
-        self._log(f"⚠ Warning: Pipeline modules not available:\n")
-        self._log("  You can still use this interface, but processing will fail.")
-        self._log("  Ensure all dependencies are installed and paths are correct.\n")
+        if not IMPORTS_AVAILABLE:
+            self._log(f"⚠ Warning: Pipeline modules not available:\n")
+            self._log("  You can still use this interface, but processing will fail.")
+            self._log("  Ensure all dependencies are installed and paths are correct.\n")
 
         # Center on screen
         self.Centre()
@@ -101,6 +106,17 @@ class VideoProcessorFrame(wx.Frame):
         main_sizer.Add(input_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
         # ────────────────────────────────────────────────────────────────
+        # IMAGE DISPLAY SECTION
+        # ────────────────────────────────────────────────────────────────
+        image_box = wx.StaticBoxSizer(wx.VERTICAL, main_panel, "Frame Preview")
+
+        self.image_panel = wx.StaticBitmap(main_panel, size=(320, 320), bitmap=self.frame_img)
+        self.image_panel.SetBackgroundColour(wx.Colour(50, 50, 50))
+        image_box.Add(self.image_panel, 1, wx.EXPAND | wx.ALL, 8)
+
+        main_sizer.Add(image_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+
+        # ────────────────────────────────────────────────────────────────
         # PARAMETERS SECTION
         # ────────────────────────────────────────────────────────────────
         params_box = wx.StaticBoxSizer(wx.VERTICAL, main_panel, "Parameters")
@@ -108,7 +124,7 @@ class VideoProcessorFrame(wx.Frame):
         # Smoothing radius slider
         smooth_hbox = wx.BoxSizer(wx.HORIZONTAL)
         smooth_label = wx.StaticText(main_panel, label="Smoothing radius:", size=(120, -1))
-        self.smooth_slider = wx.Slider(
+        self.idx_slider = wx.Slider(
             main_panel,
             value=50,
             minValue=1,
@@ -116,11 +132,11 @@ class VideoProcessorFrame(wx.Frame):
             size=(200, -1),
             style=wx.SL_HORIZONTAL | wx.SL_LABELS
         )
-        self.smooth_slider.Bind(wx.EVT_SLIDER, self._on_smooth_changed)
+        self.idx_slider.Bind(wx.EVT_SLIDER, self._on_idx_changed)
         smooth_unit = wx.StaticText(main_panel, label="pixels")
 
         smooth_hbox.Add(smooth_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        smooth_hbox.Add(self.smooth_slider, 1, wx.EXPAND | wx.RIGHT, 8)
+        smooth_hbox.Add(self.idx_slider, 1, wx.EXPAND | wx.RIGHT, 8)
         smooth_hbox.Add(smooth_unit, 0, wx.ALIGN_CENTER_VERTICAL)
         params_box.Add(smooth_hbox, 0, wx.EXPAND | wx.ALL, 8)
 
@@ -229,6 +245,7 @@ class VideoProcessorFrame(wx.Frame):
     def _bind_events(self):
         """Bind custom events for inter-thread communication."""
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_window_close)
+        self.Bind(wx.EVT_SIZE, self._on_window_resize)
 
     # ────────────────────────────────────────────────────────────────
     # EVENT HANDLERS
@@ -253,17 +270,68 @@ class VideoProcessorFrame(wx.Frame):
         dlg = wx.DirDialog(
             self,
             "Select output directory",
-            style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST
+            style=wx.DD_DEFAULT_STYLE
         )
 
         if dlg.ShowModal() == wx.ID_OK:
             self.output_path_ctrl.SetValue(dlg.GetPath())
         dlg.Destroy()
 
-    def _on_smooth_changed(self, event):
-        """Update status when smooth radius changes."""
-        value = self.smooth_slider.GetValue()
-        self.status_text.SetLabel(f"Smoothing radius: {value} pixels")
+    def _on_idx_changed(self, event):
+        """Update status when index selection changes."""
+        value = self.idx_slider.GetValue()
+        self.frame_index = value
+        self.status_text.SetLabel(f"Smoothing radius: {self.frame_index} pixels")
+
+    def _on_window_resize(self, event):
+        """Handle window resize to update image display."""
+        # if self.original_bitmap is not None:
+        self._update_image_display()
+        # event.Skip()
+
+    def _update_image_display(self):
+        """Scale and display the image to fit the current panel size."""
+        # if self.original_bitmap is None or self.image_panel is None:
+        #     return
+
+        panel_width, panel_height = self.image_panel.GetSize()
+        if panel_width <= 0 or panel_height <= 0:
+            return
+
+        vid_path = self.video_path_ctrl.GetValue()
+        print(vid_path)
+        if vid_path == "":
+            return
+
+        # chosen frame is equal to opening up the video and then using the selected frame number
+        # import cv2
+        cap = cv2.VideoCapture(vid_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_idx)
+        ret, frame = cap.read()
+        cap.release()
+
+        if ret:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img_height, img_width = frame_rgb.shape[:2]
+        else:
+            self._log("Could not read selected frame.")
+            return
+
+        img = wx.Bitmap.FromBuffer(img_width, img_height, frame_rgb)
+        img_width = img.GetWidth()
+        img_height = img.GetHeight()
+
+        # Calculate scaling factor to fit image within panel while maintaining aspect ratio
+        scale_w = panel_width / img_width
+        scale_h = panel_height / img_height
+        scale = min(scale_w, scale_h)
+
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+
+        if new_width > 0 and new_height > 0:
+            scale_img = img.Rescale(img, (new_width, new_height))
+            self.image_panel.SetBitmap(scale_img)
 
     def _on_process_click(self, event):
         """Handle process button click."""
@@ -311,7 +379,7 @@ class VideoProcessorFrame(wx.Frame):
         self._log(f"Starting processing…")
         self._log(f"Video: {video_path}")
         self._log(f"Output: {output_path}")
-        self._log(f"Smoothing radius: {self.smooth_slider.GetValue()}")
+        self._log(f"Smoothing radius: {self.idx_slider.GetValue()}")
         self._log(f"{'=' * 60}\n")
 
         # Start processing in background thread
@@ -333,7 +401,7 @@ class VideoProcessorFrame(wx.Frame):
             start_time = time.perf_counter()
 
             # Get parameters
-            smooth_radius = self.smooth_slider.GetValue()
+            smooth_radius = self.idx_slider.GetValue()
             model_path = self.model_path_ctrl.GetValue()
             conf = self.conf_ctrl.GetValue() / 100.0
 
