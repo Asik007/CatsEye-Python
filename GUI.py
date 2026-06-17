@@ -445,7 +445,9 @@ class VideoProcessorApp(wx.App):
         self.frame.Show()
         return True
 
-
-if __name__ == "__main__":
+def GUI():
     app = VideoProcessorApp()
     app.MainLoop()
+
+if __name__ == "__main__":
+    GUI()

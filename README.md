@@ -47,7 +47,7 @@ If you plan to use GPU acceleration for model inference, follow `ultralytics` do
 2. Run the combined pipeline (creates a timestamped results folder under `output/`):
 
 ```bash
-python new_pipeline.py --video uploads/your_video.mp4 --output output
+python main.py --video uploads/your_video.mp4 --output output
 ```
 
 Notes:
@@ -74,7 +74,13 @@ This script reads `output/jupyter_test/sclera_mask.mp4` (or adjust the paths ins
 - `stabilized.mp4` — result of stabilisation applied to the overlay/mask video.
 - `tracking_results.csv` — (when enabled) per-frame tracking data produced by the XCorr tracking step.
 
-## Next steps / tips
-- If you want, I can add a `requirements.txt`, example command-line flags documentation (`--help` output capture), or a small demo script that runs the pipeline on a provided sample video and commits results.
 
 
+TODO:
+- [X] Change to UV
+- [ ] Make the wx UI elements
+- [ ] Try Nuitka
+- [ ] get rid of ultralytics
+- [ ] figure out how to use an ONNX file
+- [ ] add a streamlit UI
+- [ ] Write the pystack implementation

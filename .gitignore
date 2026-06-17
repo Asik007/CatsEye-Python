@@ -8,3 +8,12 @@
 uploads/IMG_1838.mov
 /output
 /ML_stuff/exports
+
+# Ignore the entire JetBrains IDE folder by default
+.idea/
+
+# Except for these shared team settings
+!.idea/runConfigurations/
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+!.idea/vcs.xml

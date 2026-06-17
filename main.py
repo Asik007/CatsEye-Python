@@ -10,7 +10,7 @@ from CV_steps.Isolate.pipeline import process_video_ml
 
 # TODO (REORG): Review and tidy this top-level runner.
 # - Move heavy processing logic into small importable functions
-#   so `new_pipeline.py` stays a thin CLI runner.
+#   so `main.py` stays a thin CLI runner.
 # - Update imports to match new module layout per REORG_PLAN.md.
 # - Ensure each step returns structured outputs (paths, metadata).
 # See: REORG_PLAN.md -> "Main Structure" and "First Cleanup Order".

@@ -1,0 +1,27 @@
+[project]
+name = "catseye-python"
+version = "0.1.0"
+description = "A python program to visualize and process images of the eye to isolate vessel data."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.6",
+    "opencv-python>=4.13.0.92",
+    "wxpython>=4.2.5",
+]
+
+[dependency-groups]
+dev = [
+    "torch>=2.12.0",
+    "torchvision>=0.27.0",
+    "ultralytics>=8.4.70",
+]
+
+
+[project.scripts]
+GUI_test = "GUI:GUI"
+CLI = "main:_run_cli"
+
+#[build-system]
+#requires = ["setuptools>=78.1.0", "wheel>=0.45.1"]
+#build-backend = "setuptools.build_meta"
