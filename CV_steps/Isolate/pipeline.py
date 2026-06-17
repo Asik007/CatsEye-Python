@@ -151,7 +151,6 @@ def process_video_ml(
     model_path: str,
     output_mask_path: Optional[str] = None,
     output_overlay_path: Optional[str] = None,
-    target_class: Optional[str] = "Eye",
     conf: float = 0.25,
     imgsz: int = 640,
 ) -> None:
@@ -205,7 +204,7 @@ def process_video_ml(
         mask, overlay = ml_process_image(
             image_bgr=frame,
             model=model,
-            target_class=target_class,
+            target_class="Eye",
             conf=conf,
             imgsz=imgsz,
         )

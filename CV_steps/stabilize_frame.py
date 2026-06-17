@@ -90,7 +90,6 @@ def _moving_average(curve: np.ndarray, radius: int) -> np.ndarray:
 def stabilize_video(
     input_path: str,
     output_path: str,
-    smoothing_radius: int = 50,
 ) -> None:
     """
     Stabilize a shaky video and write the result to disk.
@@ -98,7 +97,6 @@ def stabilize_video(
     Args:
         input_path:       Path to the source video file.
         output_path:      Path where the stabilized video will be saved.
-        smoothing_radius: Radius (in frames) of the rolling-average smoother.
         border_mode:      How to fill borders — 'black', 'reflect', or 'crop'.
     """
     # ── 1. Read all frames once ───────────────────────────────────────────────
@@ -167,35 +165,3 @@ def stabilize_video(
     out.release()
 
     print(f"[stabilize] Done → {output_path}")
-
-# ------------------------------------------------------------------ #
-# CLI entry-point                                                      #
-# ------------------------------------------------------------------ #
-if __name__ == "__main__":
-    testing_out = os.path.join("output", "jupyter_test")
-    # os.makedirs(testing_out, exist_ok=True)
-    # print(f"Testing output directory: {testing_out}")
-
-    # outlined_path = os.path.join(testing_out, "sclera_outline.mp4")
-    mask_path = os.path.join(testing_out, "sclera_mask.mp4")
-    print(f"Input video for stabilization: {mask_path}")
-    # import argparse
-
-    # parser = argparse.ArgumentParser(description="Stabilize a shaky video with OpenCV.")
-    # parser.add_argument("input_path",  help="Path to the input video")
-    # parser.add_argument("output_path", help="Path for the stabilized output video")
-    # parser.add_argument(
-    #     "--smoothing-radius", type=int, default=50,
-    #     help="Rolling-average window radius in frames (default: 50)",
-    # )
-    # parser.add_argument(
-    #     "--border-mode", choices=["crop", "black", "reflect"], default="crop",
-    #     help="Edge-fill strategy after warping (default: crop)",
-    # )
-    # args = parser.parse_args()
-
-    stabilize_video(
-        input_path      = mask_path,
-        output_path     = os.path.join(testing_out, "stabilized_output.mp4"),
-        smoothing_radius= 10,
-    )

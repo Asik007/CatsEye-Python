@@ -25,7 +25,8 @@ from CV_steps.Isolate.pipeline import process_video_ml
 def process_and_stabilize(
     video_path: str,
     output_dir: str,
-    smooth_radius: int = 50,
+    model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
+    # smooth_radius: int = 50,
     ) -> dict:
     
     """
@@ -43,12 +44,35 @@ def process_and_stabilize(
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    print("\n" + "=" * 72)
+    print("Starting video processing pipeline")
+    print(f"  Input video      : {video_path}")
+    print(f"  Output directory : {output_dir}")
+    print("=" * 72)
+
+    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
+    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+
+    print("\n[1/2] Running ML sclera isolation")
+    print("  Using model      : ML_stuff/best.pt")
+    print("  Confidence       : 0.25")
+    print("  Inference size   : 512")
+    print(f"  Mask output      : {mask_path}")
+    print(f"  Overlay output   : {overlay_path}")
+
+
+    print(f"  Sclera overlay video saved to : {overlay_path}")
+    print(f"  Sclera mask video saved to    : {mask_path}")
+
+
+
     # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
     overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
     mask_path = os.path.join(output_dir, "sclera_mask.mp4")
     process_video_ml(
         video_path=video_path,
-        model_path="ML_stuff/best.pt",
+        model_path=model_path,
         output_mask_path=mask_path,
         output_overlay_path=overlay_path,
         conf=0.25,
@@ -73,8 +97,8 @@ def process_and_stabilize(
 
     # ── 4. Stabilisation ──────────────────────────────────────────────────────
     stabilized_video = os.path.join(output_dir, "stabilized.mp4")
-    print(f"\n► Stabilising video (smooth_radius={smooth_radius})…\n  → {stabilized_video}")
-    stabilize_video(overlay_path, stabilized_video, smoothing_radius=smooth_radius)
+    print(f"\n► Stabilising video (smooth_radius={0})…\n  → {stabilized_video}")
+    stabilize_video(overlay_path, stabilized_video)
 
     return {
         # "tracking_video":   tracking_video,
