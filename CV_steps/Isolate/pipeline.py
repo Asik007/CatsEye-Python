@@ -25,7 +25,7 @@ import cv2
 import numpy as np
 
 # from .Sclera_IP import process_eye_pipeline
-from .Sclera_ML import load_segmentation_model, process_image as ml_process_image
+from .Sclera_ML import load_segmentation_model, process_image
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ def process_image_ml(
         raise FileNotFoundError(f"Cannot read image: {image_path}")
 
     model = load_segmentation_model(model_path)
-    return ml_process_image(
+    return process_image(
         image_bgr=image_bgr,
         model=model,
         target_class=target_class,
@@ -153,7 +153,7 @@ def process_video_ml(
     output_overlay_path: Optional[str] = None,
     conf: float = 0.25,
     imgsz: int = 640,
-) -> None:
+) -> tuple[list[int], list[np.ndarray]]:
     """
     Process video using ML-based segmentation (Sclera_ML).
 
@@ -174,6 +174,9 @@ def process_video_ml(
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    bad_frames = []
+    mask_sizes = []
+
 
     print(f"Processing video: {video_path}")
     print(f"Frames: {n_frames}, Resolution: {w}x{h}, FPS: {fps}")
@@ -201,19 +204,24 @@ def process_video_ml(
             print(f"Warning: Could not read frame {i}, stopping early.")
             break
 
-        mask, overlay = ml_process_image(
+        mask, overlay, boxes = process_image(
             image_bgr=frame,
             model=model,
             target_class="Eye",
             conf=conf,
             imgsz=imgsz,
         )
-
+        if mask is None:
+            bad_frames.append(i)
+            print(f"Warning: Frame {i} produced no mask, skipping.")
+            mask = np.zeros((h, w, 3), dtype=np.uint8)
+            boxes = np.zeros((0, 4), dtype=np.int32)
+            continue
         if mask_writer is not None:
             mask_writer.write(mask)
         if overlay_writer is not None:
             overlay_writer.write(overlay)
-
+        mask_sizes.append(boxes)
         if (i + 1) % 10 == 0:
             print(f"Progress: {i + 1}/{n_frames} frames processed")
 
@@ -224,6 +232,8 @@ def process_video_ml(
         overlay_writer.release()
 
     print("Video processing complete!")
+
+    return bad_frames, mask_sizes
 
 
 # ─────────────────────────────────────────────────────────────────────────────

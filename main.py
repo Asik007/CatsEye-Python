@@ -3,7 +3,7 @@ import argparse
 import os
 import time
 
-
+from CV_steps.render import vid2seg
 # from line_profiler import profile
 from CV_steps.stabilize_frame import stabilize_video
 from CV_steps.Isolate.pipeline import process_video_ml
@@ -19,6 +19,61 @@ from CV_steps.Isolate.pipeline import process_video_ml
 # ──────────────────────────────────────────────────────────────────────────────
 # Combined Pipeline
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+def trim_process_stabilize(
+        video_path: str,
+        output_dir: str,
+        best_frame: int,
+        num_frames:int = 50,
+        model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
+):
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("\n" + "=" * 72)
+    print("Starting video processing pipeline")
+    print(f"  Input video      : {video_path}")
+    print(f"  Output directory : {output_dir}")
+    print(f"  Best frame       : {best_frame}")
+    print(f"  Number of frames : {num_frames}")
+    print("=" * 72)
+
+    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
+    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
+    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+
+    print("\nRunning ML sclera isolation")
+    print(f"  Sclera overlay video saved to : {overlay_path}")
+    print(f"  Sclera mask video saved to    : {mask_path}")
+
+    bad_frames, frame_sizes = process_video_ml(
+        video_path=video_path,
+        model_path=model_path,
+        output_mask_path=mask_path,
+        output_overlay_path=overlay_path,
+        conf=0.25,
+        imgsz=512,
+    )
+
+    print("\nTrim Video Based on Best Frame")
+    print("\nGoing to try to cut the video")
+
+    trimmed_video = os.path.join(output_dir, "trimmed_video.mp4")
+    print(f"  Trimmed video saved to : {trimmed_video}")
+
+    vid2seg(
+        mask_path,
+        bad_frames,
+        frame_sizes,
+        trimmed_video,
+        best_frame_idx=best_frame,
+    )
+
+
+
+
+
 
 
 # @profile
@@ -64,7 +119,6 @@ def process_and_stabilize(
 
     print(f"  Sclera overlay video saved to : {overlay_path}")
     print(f"  Sclera mask video saved to    : {mask_path}")
-
 
 
     # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
@@ -140,9 +194,18 @@ def _run_cli() -> None:
     print(f"  Stabilised video      : {result['stabilized_video']}")
     print(f"  Total processing time : {elapsed:.2f} seconds")
 
-if __name__ == "__main__":
-    _run_cli()
+# if __name__ == "__main__":
+#     _run_cli()
 
+
+if __name__ == "__main__":
+    trim_process_stabilize(
+        video_path= r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1734.MOV",
+        output_dir= os.path.join(r"C:\Users\dragon\Code\CatsEye-Python\output", "results_" + time.strftime("%Y%m%d-%H%M%S")),
+        best_frame= 10,
+        # num_frames: int = 50,
+        # model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
+    )
 # command to get the same output as the CLI but without the CLI interface, just for testing how long it takes
 # if __name__ == "__main__":
 #     video = os.path.join(os.getcwd(), "uploads", "output_001.mp4")
