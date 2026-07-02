@@ -5,6 +5,7 @@ description = "A python program to visualize and process images of the eye to is
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "briefcase>=0.4.2",
     "numpy>=2.4.6",
     "opencv-python>=4.13.0.92",
     "pillow>=12.2.0",

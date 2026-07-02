@@ -197,13 +197,22 @@ def _run_cli() -> None:
 # if __name__ == "__main__":
 #     _run_cli()
 
+# new process test
+# if __name__ == "__main__":
+#     trim_process_stabilize(
+#         video_path= r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1734.MOV",
+#         output_dir= os.path.join(r"C:\Users\dragon\Code\CatsEye-Python\output", "results_" + time.strftime("%Y%m%d-%H%M%S")),
+#         best_frame= 10,
+#         # num_frames: int = 50,
+#         # model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
+#     )
 
+
+# old test process
 if __name__ == "__main__":
-    trim_process_stabilize(
+    process_and_stabilize(
         video_path= r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1734.MOV",
         output_dir= os.path.join(r"C:\Users\dragon\Code\CatsEye-Python\output", "results_" + time.strftime("%Y%m%d-%H%M%S")),
-        best_frame= 10,
-        # num_frames: int = 50,
         # model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
     )
 # command to get the same output as the CLI but without the CLI interface, just for testing how long it takes

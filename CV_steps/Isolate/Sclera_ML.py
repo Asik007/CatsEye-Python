@@ -47,12 +47,12 @@ def infer_mask(
     combined_mask = np.zeros((h, w), dtype=np.uint8)
 
     for i, mask in enumerate(masks):
-        # Skip if filtering by class and class info is missing
-        if target_class is not None and (target_id is None or class_ids is None):
-            continue
-        # Skip if this mask's class doesn't match the target
-        if target_class is not None and class_ids[i] != target_id:
-            continue
+        # # Skip if filtering by class and class info is missing
+        # if target_class is not None and (target_id is None or class_ids is None):
+        #     continue
+        # # Skip if this mask's class doesn't match the target
+        # if target_class is not None and class_ids[i] != target_id:
+        #     continue
 
         # Resize to original image dimensions and binarize
         mask_resized = cv2.resize(mask.astype(np.float32), (w, h),
