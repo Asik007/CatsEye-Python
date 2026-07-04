@@ -2,79 +2,86 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-# from line_profiler import profile
 from typing import Optional
 
 import cv2
 import numpy as np
-from YOLO_infer import YOLOModel
+
+from CV_steps.Isolate.YOLO_infer import YOLOModel
 
 
-def load_segmentation_model(model_path: str | Path, confidence: float = .5) -> YOLOModel:
+def load_segmentation_model(model_path: str | Path, confidence: float = 0.5) -> YOLOModel:
     return YOLOModel(confidence, str(model_path))
 
 
 def infer_mask(
         image_bgr: np.ndarray,
         model: YOLOModel,
-        target_class: Optional[str] = "Eye",
-        conf: float = 0.25,
-        imgsz: int = 160,
+        target_class: Optional[str | int] = None,
+        class_names: Optional[dict[int, str]] = None,
 ):
     """
-    Returns a binary mask (uint8, 0/255) for the target class.
+    Returns a binary mask (uint8, 0/255) for the target class, plus the
+    bounding boxes of the detections that contributed to it.
+
     If target_class is None, combines all predicted instance masks.
+
+    target_class can be:
+      - an int, matched directly against each detection's class id, or
+      - a str name, in which case `class_names` ({id: name}) must be
+        supplied -- YOLOModel doesn't carry class names itself (unlike
+        Ultralytics' `model.names`), so the caller has to provide them.
+
+    Note: confidence threshold and input size are no longer arguments here.
+    YOLOModel bakes the detection threshold in at construction time (see
+    `load_segmentation_model`) and derives its input size from the ONNX
+    model itself, so there's nothing to override per-call.
     """
-    # Run inference
-    results = model.predict(source=image_bgr, conf=conf, imgsz=imgsz, verbose=False)
-    if not results or results[0].masks is None:
-        return np.zeros(image_bgr.shape[:2], dtype=np.uint8), np.empty((0, 4))
+    detections = model.Predict(image_bgr)
 
-    result = results[0]
     h, w = image_bgr.shape[:2]
-
-    # Get class IDs if available
-    class_ids = None
-    if result.boxes is not None and result.boxes.cls is not None:
-        class_ids = result.boxes.cls.detach().cpu().numpy().astype(int)
-
-    # Find target class ID
-    target_id = _get_class_id(model, target_class)
-
-    # Process masks
-    masks = result.masks.data.cpu().numpy()   # (n, h, w) numpy array
-    boxes = result.boxes.xyxy.cpu().numpy()    # (n, 4) bounding boxes
     combined_mask = np.zeros((h, w), dtype=np.uint8)
 
-    for i, mask in enumerate(masks):
-        # # Skip if filtering by class and class info is missing
-        # if target_class is not None and (target_id is None or class_ids is None):
-        #     continue
-        # # Skip if this mask's class doesn't match the target
-        # if target_class is not None and class_ids[i] != target_id:
-        #     continue
+    if not detections:
+        return combined_mask, np.empty((0, 4))
 
-        # Resize to original image dimensions and binarize
-        mask_resized = cv2.resize(mask.astype(np.float32), (w, h),
-                                  interpolation=cv2.INTER_NEAREST)
-        binary_mask = (mask_resized > 0.5).astype(np.uint8) * 255
+    target_id = _resolve_target_id(target_class, class_names)
 
-        # Combine with existing mask (logical OR)
+    kept_boxes = []
+    for detection in detections:
+        if target_id is not None and detection["class"] != target_id:
+            continue
+
+        binary_mask = detection["mask"].astype(np.uint8) * 255
         combined_mask = cv2.bitwise_or(combined_mask, binary_mask)
+        kept_boxes.append(detection["box"])
 
+    boxes = np.array(kept_boxes, dtype=float) if kept_boxes else np.empty((0, 4))
     return combined_mask, boxes
 
 
-def _get_class_id(model: YOLO, target_class: Optional[str]) -> Optional[int]:
-    """Find the class ID matching target_class name."""
+def _resolve_target_id(
+        target_class: Optional[str | int],
+        class_names: Optional[dict[int, str]],
+) -> Optional[int]:
+    """Resolve target_class (name or index) to a class index."""
     if target_class is None:
         return None
+    if isinstance(target_class, int):
+        return target_class
 
-    names = getattr(model, "names", {})
-    for class_id, class_name in names.items():
-        if str(class_name).lower() == target_class.lower():
+    if class_names is None:
+        raise ValueError(
+            "target_class was given as a name but no class_names mapping was "
+            "provided. YOLOModel does not store class names itself -- pass a "
+            "{index: name} dict via class_names, or pass target_class as an int."
+        )
+
+    for class_id, class_name in class_names.items():
+        if str(class_name).lower() == str(target_class).lower():
             return int(class_id)
-    return None
+
+    raise ValueError(f"Unknown class name: {target_class!r}")
 
 
 def apply_mask(image_bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -83,25 +90,31 @@ def apply_mask(image_bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
 def process_image(
     image_bgr: np.ndarray,
-    target_class: Optional[str] = "sclera",
-    conf: float = 0.25,
-    imgsz: int = 640,
-    model: Optional[YOLO] = None,
+    model: YOLOModel,
+    target_class: Optional[str | int] = None,
+    class_names: Optional[dict[int, str]] = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if image_bgr is None:
         raise FileNotFoundError("Could not read image")
 
     if model is None:
-        raise ValueError("A valid YOLO model must be provided")
+        raise ValueError("A valid YOLOModel must be provided")
 
-    # Unpack the two return values of infer_mask
     mask, boxes = infer_mask(
         image_bgr, model,
-        target_class=target_class,
-        conf=conf,
-        imgsz=imgsz
+        # target_class=target_class,
+        class_names=class_names,
     )
 
     overlay = apply_mask(image_bgr, mask)
 
     return mask, overlay, boxes
+
+
+# if __name__ == "__main__":
+#     in_img = cv2.imread(r"C:\Users\dragon\Code\CatsEye-Python\uploads\frames\frame0015.jpg")
+#     YOLOM = load_segmentation_model(r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\exports\model_640_False.onnx")
+#     mask, overlay, boxes = process_image(in_img, YOLOM)
+#     cv2.imshow("Mask", mask)
+#     cv2.imshow("Overlay", overlay)
+#     cv2.waitKey(0)

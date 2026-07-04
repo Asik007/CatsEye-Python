@@ -5,7 +5,7 @@ import time
 
 from CV_steps.render import vid2seg
 # from line_profiler import profile
-from CV_steps.stabilize_frame import stabilize_video
+# from CV_steps.stabilize_frame import stabilize_video
 from CV_steps.Isolate.pipeline import process_video_ml
 
 # TODO (REORG): Review and tidy this top-level runner.
@@ -25,7 +25,6 @@ def trim_process_stabilize(
         video_path: str,
         output_dir: str,
         best_frame: int,
-        num_frames:int = 50,
         model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
 ):
 
@@ -36,7 +35,7 @@ def trim_process_stabilize(
     print(f"  Input video      : {video_path}")
     print(f"  Output directory : {output_dir}")
     print(f"  Best frame       : {best_frame}")
-    print(f"  Number of frames : {num_frames}")
+    # print(f"  Number of frames : {num_frames}")
     print("=" * 72)
 
     # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
@@ -52,8 +51,6 @@ def trim_process_stabilize(
         model_path=model_path,
         output_mask_path=mask_path,
         output_overlay_path=overlay_path,
-        conf=0.25,
-        imgsz=512,
     )
 
     print("\nTrim Video Based on Best Frame")

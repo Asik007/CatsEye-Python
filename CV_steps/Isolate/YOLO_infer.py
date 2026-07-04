@@ -22,11 +22,13 @@ class YOLOModel:
     def GetProviders(self) -> list[str]:
         return [provider for provider in ("CUDAExecutionProvider", "CPUExecutionProvider") if provider in onnxruntime.get_available_providers()]
 
-    # Execute model
+    # Execute model and return the drawn overlay (keeps old behavior for callers that want an annotated image)
     def Execute(self, image: numpy.ndarray) -> numpy.ndarray:
-        (input, padding) = self.GetInput(image)
-        output = self.__session.run(None, {self.__session.get_inputs()[0].name: input})
-        return self.ProcessOutput(image, output, padding)
+        detections = self.Predict(image)
+        if detections:
+            return self.DrawDetections(image, detections)
+        return image
+
 
     # Return model input
     def GetInput(self, image: numpy.ndarray) -> tuple[numpy.ndarray, tuple[int, int]]:
@@ -52,8 +54,16 @@ class YOLOModel:
         image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
         return image, (top, left)
 
-    # Process model output (YOLOv10+)
+    # Process model output (YOLOv10+) into a drawn overlay + segment canvas
     def ProcessOutput(self, image: numpy.ndarray, output, padding: tuple[int, int]) -> numpy.ndarray:
+        detections = self.ProcessDetections(image, output, padding)
+        if detections:
+            return self.DrawDetections(image, detections)
+        return image
+
+    # Process model output (YOLOv10+)
+    # Turn raw model output (YOLOv10+) into a list of per-instance detections, without drawing.
+    def ProcessDetections(self, image: numpy.ndarray, output, padding: tuple[int, int]) -> list[dict]:
         predictions = output[0]
         predictions = predictions[0]
         boundingBoxes = predictions[:, :4]
@@ -61,23 +71,51 @@ class YOLOModel:
         classIndices = predictions[:, 5]
         maskCoefficients = predictions[:, 6:]
         indices = numpy.where(classScores >= self.__detectionThreshold)[0]
+
+        if len(indices) == 0:
+            return []
+
         prototypeMasks = output[1]
         prototypeMasks = prototypeMasks[0]
         prototypeMasks = prototypeMasks.reshape(32, -1)
-        if len(indices) > 0:
-            filteredMaskCoefficients = maskCoefficients[indices]
-            filteredClassIndices = classIndices[indices]
-            filteredClassScores = classScores[indices]
-            filteredBoundingBoxes = boundingBoxes[indices]
-            (imageHeight, imageWidth) = image.shape[:2]
-            scale = min(self.__inputHeight / imageHeight, self.__inputWidth / imageWidth)
-            filteredBoundingBoxes[:, 0] = (filteredBoundingBoxes[:, 0] - padding[1]) / scale
-            filteredBoundingBoxes[:, 1] = (filteredBoundingBoxes[:, 1] - padding[0]) / scale
-            filteredBoundingBoxes[:, 2] = (filteredBoundingBoxes[:, 2] - padding[1]) / scale
-            filteredBoundingBoxes[:, 3] = (filteredBoundingBoxes[:, 3] - padding[0]) / scale
-            detections = [{"box": filteredBoundingBoxes[i].astype(int).tolist(), "class": int(filteredClassIndices[i]), "score": filteredClassScores[i]} for i in range(len(filteredBoundingBoxes))]
-            return self.DrawDetections(image, indices, detections, filteredMaskCoefficients[indices] @ prototypeMasks, filteredBoundingBoxes[indices], padding, scale)
-        return image
+
+        filteredMaskCoefficients = maskCoefficients[indices]
+        filteredClassIndices = classIndices[indices]
+        filteredClassScores = classScores[indices]
+        filteredBoundingBoxes = boundingBoxes[indices]
+
+        (imageHeight, imageWidth) = image.shape[:2]
+        scale = min(self.__inputHeight / imageHeight, self.__inputWidth / imageWidth)
+        filteredBoundingBoxes[:, 0] = (filteredBoundingBoxes[:, 0] - padding[1]) / scale
+        filteredBoundingBoxes[:, 1] = (filteredBoundingBoxes[:, 1] - padding[0]) / scale
+        filteredBoundingBoxes[:, 2] = (filteredBoundingBoxes[:, 2] - padding[1]) / scale
+        filteredBoundingBoxes[:, 3] = (filteredBoundingBoxes[:, 3] - padding[0]) / scale
+
+        masks = self.ProcessMasks(
+            filteredMaskCoefficients @ prototypeMasks,
+            filteredBoundingBoxes,
+            imageWidth, imageHeight, padding, scale,
+        )
+
+        return [
+            {
+                "box": filteredBoundingBoxes[i].astype(int).tolist(),
+                "class": int(filteredClassIndices[i]),
+                "score": float(filteredClassScores[i]),
+                "mask": masks[i],
+            }
+            for i in range(len(filteredBoundingBoxes))
+        ]
+
+
+
+    # Run inference and return structured detections (box, class, score, mask) without drawing anything.
+    # "mask" is a boolean HxW array the same size as the input image.
+    def Predict(self, image: numpy.ndarray) -> list[dict]:
+        (input, padding) = self.GetInput(image)
+        output = self.__session.run(None, {self.__session.get_inputs()[0].name: input})
+        return self.ProcessDetections(image, output, padding)
+
 
     # Draw detections
     def DrawDetections(self, image: numpy.ndarray, indices, detections, masks, boundingBoxes, padding: tuple[int, int], scale: float) -> numpy.ndarray:
@@ -88,7 +126,7 @@ class YOLOModel:
             (x1, y1, x2, y2) = detections[index]["box"]
             self.DrawBoundingBox(image, f"{detections[index]["class"]}: {detections[index]["score"]:.0%}", x1, y1, x2, y2)
             segmentCanvas[segment] = self.__fillColor
-        return cv2.addWeighted(segmentCanvas, 0.3, image, 0.7, 0), segmentCanvas
+        return cv2.addWeighted(segmentCanvas, 0.3, image, 0.7, 0)
 
     # Draw bounding box
     def DrawBoundingBox(self, image: numpy.ndarray, title: str, x1: int, y1: int, x2: int, y2: int):

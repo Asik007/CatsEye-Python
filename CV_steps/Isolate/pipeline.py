@@ -25,7 +25,7 @@ import cv2
 import numpy as np
 
 # from .Sclera_IP import process_eye_pipeline
-from .Sclera_ML import load_segmentation_model, process_image
+from .Sclera_INFER import load_segmentation_model, process_image
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -208,8 +208,8 @@ def process_video_ml(
             image_bgr=frame,
             model=model,
             target_class="Eye",
-            conf=conf,
-            imgsz=imgsz,
+            # conf=conf,
+            # imgsz=imgsz,
         )
         if mask is None:
             bad_frames.append(i)
