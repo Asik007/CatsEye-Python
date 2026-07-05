@@ -257,9 +257,9 @@ class VideoProcessorApp:
         'results_YYYYMMDD-HHMMSS', and create it immediately.
         """
         video_path = self.video_path_var.get()
-        base_dir = Path(video_path).parent if video_path else Path(".")
+        base_dir = Path(video_path).parent.parent if video_path else Path(".")
         folder_name = f"results_{datetime.now():%Y%m%d-%H%M%S}"
-        target = base_dir / folder_name
+        target = base_dir / "output" /folder_name
 
         try:
             target.mkdir(parents=True, exist_ok=True)
