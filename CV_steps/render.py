@@ -26,6 +26,9 @@ def find_seg(
     if not segments:
         raise ValueError("No valid video segments found (all are too long or empty).")
 
+    print(f"Found {len(segments)} valid video segments.")
+    print(f"Segments: {segments}")
+
     # Prefer segment containing the requested best frame
     if best_frame_idx is not None:
         for seg in segments:
@@ -49,7 +52,7 @@ def vid2seg(
         max_len: int = 50,
         best_frame_idx: Optional[int] = None,
         outlier_std: float = 1.0,
-) -> Tuple[int, int]:
+    ) -> list:
     """
     Extract a continuous segment (≤ max_len) from the video, avoiding bad frames
     and frames whose detected bounding box area deviates by more than outlier_std
@@ -111,6 +114,7 @@ def vid2seg(
 
     # Remove duplicates and sort once
     bad_frames = sorted(set(bad_frames))
+    print(f"Bad frames {len(bad_frames)}: {bad_frames}")
 
     # ---- Find the best segment ----
     start_frame, end_frame = find_seg(
@@ -128,16 +132,19 @@ def vid2seg(
         raise IOError(f"Cannot create output video: {output_path}")
 
     frame_idx = 0
+    # seg_frames = []
     while frame_idx < num_frames:
         ret, frame = cap.read()
         if not ret:
             break
         if start_frame <= frame_idx <= end_frame:
             out.write(frame)
+            # seg_frames.append(frame)
         frame_idx += 1
 
     cap.release()
     out.release()
 
     print(f"Segment saved: frames {start_frame}-{end_frame} to {output_path}")
-    return start_frame, end_frame
+    return [start_frame, end_frame]
+

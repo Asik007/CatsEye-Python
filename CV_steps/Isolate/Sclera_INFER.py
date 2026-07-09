@@ -20,23 +20,7 @@ def infer_mask(
         target_class: Optional[str | int] = None,
         class_names: Optional[dict[int, str]] = None,
 ):
-    """
-    Returns a binary mask (uint8, 0/255) for the target class, plus the
-    bounding boxes of the detections that contributed to it.
 
-    If target_class is None, combines all predicted instance masks.
-
-    target_class can be:
-      - an int, matched directly against each detection's class id, or
-      - a str name, in which case `class_names` ({id: name}) must be
-        supplied -- YOLOModel doesn't carry class names itself (unlike
-        Ultralytics' `model.names`), so the caller has to provide them.
-
-    Note: confidence threshold and input size are no longer arguments here.
-    YOLOModel bakes the detection threshold in at construction time (see
-    `load_segmentation_model`) and derives its input size from the ONNX
-    model itself, so there's nothing to override per-call.
-    """
     detections = model.Predict(image_bgr)
 
     h, w = image_bgr.shape[:2]
@@ -49,8 +33,8 @@ def infer_mask(
 
     kept_boxes = []
     for detection in detections:
-        if target_id is not None and detection["class"] != target_id:
-            continue
+        # if target_id is not None and detection["class"] != target_id:
+        #     continue
 
         binary_mask = detection["mask"].astype(np.uint8) * 255
         combined_mask = cv2.bitwise_or(combined_mask, binary_mask)
@@ -108,7 +92,54 @@ def process_image(
 
     overlay = apply_mask(image_bgr, mask)
 
+    # debug_show_overlay(overlay, boxes, window_name="Processed Frame")
+    # I want a function that I can comment out that shows each frame in the overlay with the bounding boxes laid on top
+
     return mask, overlay, boxes
+
+
+def debug_show_overlay(
+    overlay: np.ndarray,
+    boxes: np.ndarray,
+    window_name: str = "Debug Overlay",
+    color: tuple[int, int, int] = (0, 255, 0),   # green
+    thickness: int = 2,
+    wait_key: bool = True,
+) -> bool:
+    """
+    Draw bounding boxes on the overlay and show it in a window.
+    Pauses until a key is pressed.
+
+    Args:
+        overlay: Masked image (BGR).
+        boxes: (N, 4) array of bounding boxes [x1, y1, x2, y2].
+        window_name: Title of the display window.
+        color: BGR color for the boxes.
+        thickness: Line thickness.
+        wait_key: If True, waits for a key press; if False, shows briefly.
+
+    Returns:
+        False if user pressed 'q' or ESC (to stop batch), True otherwise.
+    """
+    # Work on a copy so we don't modify the original overlay
+    display = overlay.copy()
+    print(f"Boxes: {boxes}")
+
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box)
+        cv2.rectangle(display, (x1, y1), (x2, y2), color, thickness)
+
+    cv2.imshow(window_name, display)
+
+    if wait_key:
+        key = cv2.waitKey(0) & 0xFF
+        cv2.destroyWindow(window_name)
+        if key == ord('q') or key == 27:
+            return False
+    else:
+        cv2.destroyWindow(window_name)
+
+    return True
 
 
 # if __name__ == "__main__":

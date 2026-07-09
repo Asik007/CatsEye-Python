@@ -11,15 +11,14 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pillow>=12.2.0",
     "wxpython>=4.2.5",
+    "onnxruntime>=1.27.0",
+    "pystackreg>=0.2.8",
 ]
 
 [dependency-groups]
 dev = [
-    "onnxruntime>=1.27.0",
     "toga>=0.5.4",
-    "torch>=2.12.0",
-    "torchvision>=0.27.0",
-    "ultralytics>=8.4.70",
+#    "ultralytics>=8.4.70",
 ]
 
 

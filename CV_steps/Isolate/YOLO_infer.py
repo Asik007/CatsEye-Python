@@ -6,15 +6,22 @@ import onnxruntime
 class YOLOModel:
     # Initialization
     def __init__(self, detectionThreshold: float, model_path: str):
-        super().__init__()
-        self.__textForegroundColor = (0, 0, 0)
-        self.__textBackgroundColor = (255, 255, 255)
-        self.__fillColor = (255, 0, 0)
+        # super().__init__()
+        self._textForegroundColor = (0, 0, 0)
+        self._textBackgroundColor = (255, 255, 255)
+        self._fillColor = (255, 0, 0)
 
-        self.__session = onnxruntime.InferenceSession(model_path, providers=self.GetProviders())
-        self.__inputWidth = self.__session.get_inputs()[0].shape[3]
-        self.__inputHeight = self.__session.get_inputs()[0].shape[2]
-        self.__detectionThreshold = detectionThreshold
+        self._session = onnxruntime.InferenceSession(model_path, providers=self.GetProviders())
+        self._inputWidth = self._session.get_inputs()[0].shape[3]
+        self._inputHeight = self._session.get_inputs()[0].shape[2]
+        self._detectionThreshold = detectionThreshold
+
+        self._outputWidth = self._session.get_outputs()[1].shape[3]
+        self._outputHeight = self._session.get_outputs()[1].shape[2]
+        print(self._outputWidth)
+        # self._outputHeight = self._session.get_outputs()[0].shape[2]
+
+        print(f"YOLOModel defined as: {vars(self)}")
 
     # Load classes
 
@@ -32,7 +39,7 @@ class YOLOModel:
 
     # Return model input
     def GetInput(self, image: numpy.ndarray) -> tuple[numpy.ndarray, tuple[int, int]]:
-        (image, padding) = self.LetterBoxInputImage(image, self.__inputWidth, self.__inputHeight)
+        (image, padding) = self.LetterBoxInputImage(image, self._inputWidth, self._inputHeight)
         image = numpy.array(image) / 255.0
         image = numpy.transpose(image, (2, 0, 1))
         image = numpy.expand_dims(image, axis=0)
@@ -70,7 +77,7 @@ class YOLOModel:
         classScores = predictions[:, 4]
         classIndices = predictions[:, 5]
         maskCoefficients = predictions[:, 6:]
-        indices = numpy.where(classScores >= self.__detectionThreshold)[0]
+        indices = numpy.where(classScores >= self._detectionThreshold)[0]
 
         if len(indices) == 0:
             return []
@@ -85,7 +92,7 @@ class YOLOModel:
         filteredBoundingBoxes = boundingBoxes[indices]
 
         (imageHeight, imageWidth) = image.shape[:2]
-        scale = min(self.__inputHeight / imageHeight, self.__inputWidth / imageWidth)
+        scale = min(self._inputHeight / imageHeight, self._inputWidth / imageWidth)
         filteredBoundingBoxes[:, 0] = (filteredBoundingBoxes[:, 0] - padding[1]) / scale
         filteredBoundingBoxes[:, 1] = (filteredBoundingBoxes[:, 1] - padding[0]) / scale
         filteredBoundingBoxes[:, 2] = (filteredBoundingBoxes[:, 2] - padding[1]) / scale
@@ -113,7 +120,7 @@ class YOLOModel:
     # "mask" is a boolean HxW array the same size as the input image.
     def Predict(self, image: numpy.ndarray) -> list[dict]:
         (input, padding) = self.GetInput(image)
-        output = self.__session.run(None, {self.__session.get_inputs()[0].name: input})
+        output = self._session.run(None, {self._session.get_inputs()[0].name: input})
         return self.ProcessDetections(image, output, padding)
 
 
@@ -125,7 +132,7 @@ class YOLOModel:
         for index, segment in zip(indices, segments):
             (x1, y1, x2, y2) = detections[index]["box"]
             self.DrawBoundingBox(image, f"{detections[index]["class"]}: {detections[index]["score"]:.0%}", x1, y1, x2, y2)
-            segmentCanvas[segment] = self.__fillColor
+            segmentCanvas[segment] = self._fillColor
         return cv2.addWeighted(segmentCanvas, 0.3, image, 0.7, 0)
 
     # Draw bounding box
@@ -139,13 +146,13 @@ class YOLOModel:
         else:
             yTitle1 = y1 + textHeight + 2 * baseline
             yTitle2 = y1 + textHeight + baseline
-        cv2.rectangle(image, (x1, yTitle1), (x1 + textWidth, y1), self.__textBackgroundColor, -1)
-        cv2.putText(image, title, (x1, yTitle2), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=fontScale, color=self.__textForegroundColor, thickness=thickness)
-        cv2.rectangle(image, (x1, y1), (x2, y2), self.__textBackgroundColor, thickness=thickness)
+        cv2.rectangle(image, (x1, yTitle1), (x1 + textWidth, y1), self._textBackgroundColor, -1)
+        cv2.putText(image, title, (x1, yTitle2), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=fontScale, color=self._textForegroundColor, thickness=thickness)
+        cv2.rectangle(image, (x1, y1), (x2, y2), self._textBackgroundColor, thickness=thickness)
 
     # Process masks
     def ProcessMasks(self, masks, boundingBoxes, imageWidth: int, imageHeight: int, padding: tuple[int, int], scale: float):
-        masks = masks.reshape(-1, 160, 160)
+        masks = masks.reshape(-1, self._outputWidth, self._outputHeight)
         masks = masks.transpose(1, 2, 0)
         masks = self.ScaleMasks(masks, imageWidth, imageHeight, padding, scale)
         masks = numpy.einsum("HWN -> NHW", masks)

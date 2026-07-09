@@ -71,81 +71,6 @@ def process_image_ml(
 # VIDEO PROCESSING
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-def process_video_ip(
-    input_path: str,
-    overlay_path: str,
-    mask_path: str,
-    max_workers: int = 4,
-    debug: bool = False,
-) -> None:
-    """
-    Process video using classical image processing (Sclera_IP) with parallel workers.
-
-    Args:
-        input_path: Path to input video
-        overlay_path: Output path for overlay video
-        mask_path: Output path for mask video
-        max_workers: Number of parallel workers
-        debug: Enable debug output
-    """
-    cap = cv2.VideoCapture(input_path)
-    if not cap.isOpened():
-        raise IOError(f"Cannot open video: {input_path}")
-
-    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-
-    print(f"Processing video: {input_path}")
-    print(f"Frames: {n_frames}, Resolution: {w}x{h}, FPS: {fps}")
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-    raw_frames = []
-    for i in range(n_frames):
-        ret, frame = cap.read()
-        if not ret:
-            print(f"Warning: Could not read frame {i}, stopping early.")
-            break
-        raw_frames.append((i, frame))
-    cap.release()
-
-    def process(item):
-        idx, frame = item
-        if debug:
-            import threading
-            print(f"Processing frame {idx + 1}/{n_frames} in thread {threading.current_thread().name}")
-        masked_img, outlined = process_eye_pipeline(image=frame)
-        return idx, outlined, masked_img
-
-    results = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(process, item): item[0] for item in raw_frames}
-        for future in as_completed(futures):
-            idx, outlined, masked_img = future.result()
-            results[idx] = (outlined, masked_img)
-
-    if results and results[0][0] is not None:
-        Path(overlay_path).parent.mkdir(parents=True, exist_ok=True)
-        writer = cv2.VideoWriter(overlay_path, fourcc, fps, (w, h))
-        for i in range(len(raw_frames)):
-            outlined, _ = results[i]
-            writer.write(outlined)
-            print(f"Writing overlay: {i + 1}/{len(raw_frames)}", end="\r")
-        writer.release()
-        print(f"\nSaved overlay → {overlay_path}")
-
-    Path(mask_path).parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(mask_path, fourcc, fps, (w, h))
-    for i in range(len(raw_frames)):
-        _, masked_img = results[i]
-        writer.write(masked_img)
-    writer.release()
-    print(f"Saved mask    → {mask_path}")
-
-
 def process_video_ml(
     video_path: str,
     model_path: str,
@@ -204,6 +129,7 @@ def process_video_ml(
             print(f"Warning: Could not read frame {i}, stopping early.")
             break
 
+        print(f" Processing frame {i}")
         mask, overlay, boxes = process_image(
             image_bgr=frame,
             model=model,
@@ -221,6 +147,7 @@ def process_video_ml(
             mask_writer.write(mask)
         if overlay_writer is not None:
             overlay_writer.write(overlay)
+
         mask_sizes.append(boxes)
         if (i + 1) % 10 == 0:
             print(f"Progress: {i + 1}/{n_frames} frames processed")

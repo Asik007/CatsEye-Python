@@ -3,10 +3,14 @@ import argparse
 import os
 import time
 
+from CV_steps.Helpers.opener import extract_vid_seg
+from CV_steps.registration import register_frame_stack, register_stack_to_mean_sitk
 from CV_steps.render import vid2seg
 # from line_profiler import profile
 # from CV_steps.stabilize_frame import stabilize_video
 from CV_steps.Isolate.pipeline import process_video_ml
+
+import cv2
 
 # TODO (REORG): Review and tidy this top-level runner.
 # - Move heavy processing logic into small importable functions
@@ -56,16 +60,26 @@ def trim_process_stabilize(
     print("\nTrim Video Based on Best Frame")
     print("\nGoing to try to cut the video")
 
-    trimmed_video = os.path.join(output_dir, "trimmed_video.mp4")
-    print(f"  Trimmed video saved to : {trimmed_video}")
+    trimmed_vid_path = os.path.join(output_dir, "trimmed_video.mp4")
+    print(f"  Trimmed video saving to : {trimmed_vid_path}")
 
-    vid2seg(
+    seg_frames = vid2seg(
         mask_path,
         bad_frames,
         frame_sizes,
-        trimmed_video,
+        trimmed_vid_path,
         best_frame_idx=best_frame,
     )
+
+    vid_seg_rgb = extract_vid_seg(overlay_path, seg_frames[0], seg_frames[1], output_dir)
+
+    print(f"Trimmed video saved to: {trimmed_vid_path}")
+
+    print(f"Registering frames and saving to tiff")
+
+    reg_seg = register_frame_stack(vid_seg_rgb, output_dir)
+
+    # reg_seg = register_stack_to_mean_sitk(vid_seg_rgb, output_dir)
 
 
 
