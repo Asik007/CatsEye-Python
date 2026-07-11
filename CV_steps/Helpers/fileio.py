@@ -1,14 +1,15 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 
 
 def extract_vid_seg(
-        video_path,
-        start_frame,
-        end_frame,
-        output_dir
-    ):
-
+        video_path: Path,
+        start_frame: int,
+        end_frame: int,
+        output_dir: Path
+):
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
@@ -53,7 +54,7 @@ def extract_vid_seg(
     # 3. Save the NumPy stack as a video file
     # 'mp4v' is a widely compatible codec for .mp4
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    output_filename = output_dir + "/trimmed.mp4"
+    output_filename = output_dir / "trimmed.mp4"
     out = cv2.VideoWriter(output_filename, fourcc, fps, (width, height))
 
     # Iterate through axis 0 of the numpy array to write frames
@@ -67,5 +68,7 @@ def extract_vid_seg(
     return frame_stack
 
 
-# --- Example Usage ---
-# Extracts frames 100 to 150, saves them as 'trimmed.mp4', and returns the array
+def save_tiff(frame_stack: np.ndarray, output_dir: Path, output_name: str):
+    tiff_path = output_dir / f"{output_name}_stack.tiff"
+    print(f"Saving registered stack to {tiff_path}")
+    success = cv2.imwritemulti(tiff_path, frame_stack.astype(np.uint8))

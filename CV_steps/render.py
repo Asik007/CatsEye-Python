@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 from typing import List, Optional, Tuple
 
+from numpy import ndarray
+
 
 def find_seg(
         num_frames: int,
@@ -47,7 +49,7 @@ def find_seg(
 def vid2seg(
         video_path: str,
         bad_frames: List[int],
-        frame_sizes: List[Optional[Tuple[int, int, int, int]]],
+        frame_sizes: List[ndarray[Tuple[int, int, int, int]]],
         output_path: str,
         max_len: int = 50,
         best_frame_idx: Optional[int] = None,
@@ -148,3 +150,6 @@ def vid2seg(
     print(f"Segment saved: frames {start_frame}-{end_frame} to {output_path}")
     return [start_frame, end_frame]
 
+# TODO: i mean we can detect if a frame is moving/blurry but idk if its worth it
+# TODO: also, this bad frame stuff is mostly the inference being stupid and not returning a mask for some reason
+#       ^ sidenote: i don't think its my code but it does happen regardless of inference size

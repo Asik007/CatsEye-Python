@@ -1,11 +1,16 @@
+import os
+from pathlib import Path
+
+import cv2
 import numpy as np
 from pystackreg import StackReg
-import cv2
+
+from CV_steps.Helpers.fileio import save_tiff
 
 
 def register_frame_stack(
         frame_stack: np.ndarray,
-        output_dir: str,
+        output_dir: Path,
         reference: str = 'mean') -> np.ndarray:
     """
     Registers a 3D NumPy array (stack of frames) using pystackreg.
@@ -21,7 +26,6 @@ def register_frame_stack(
     np.ndarray
         The registered (aligned) frame stack as a numpy array.
     """
-    transform_type = 'rigid',
 
     reg_method = StackReg.RIGID_BODY
 
@@ -29,133 +33,117 @@ def register_frame_stack(
     sr = StackReg(reg_method)
 
     # 3. Perform registration and transformation
-    print(f"Registering {len(frame_stack)} frames using '{transform_type}' alignment...")
+    print(f"Registering {len(frame_stack)} frames using rigid alignment...")
 
     # uhh i guess take out only the green channel?
 
-    frame_stack = frame_stack[:,:,:,1]
+    frame_stack = frame_stack[:, :, :, 1]
 
     registered_stack = sr.register_transform_stack(frame_stack, reference=reference)
 
-    tiff_path = output_dir + r"\output_stack.tiff"
-
-    print(f"Saving registered stack to {tiff_path}")
-
-    success = cv2.imwritemulti(tiff_path, registered_stack.astype(np.uint8))
-
-    print(f"Registered stack saved to {tiff_path}")
+    save_tiff(registered_stack, output_dir, "stackreg")
 
     return registered_stack
 
 
 
-import SimpleITK as sitk
 
-# Somehow takes longer
-
-def register_stack_to_mean_sitk(
+def dumb_register(
         frame_stack: np.ndarray,
-        output_dir: str,
-        channel: int = 1,
-        mean_iterations: int = 3) -> np.ndarray:
+        output_dir: Path,
+        ) -> np.ndarray:
     """
-    Rigidly register all frames to the iterative mean of the stack using SimpleITK.
+    Rigidly register each frame: rotate so the principal axis is vertical,
+    then translate the centroid to the image centre.
 
-    Parameters
-    ----------
-    frame_stack : np.ndarray
-        Input stack. Shape can be (frames, H, W) or (frames, H, W, C).
-        If 4D, the specified channel is extracted.
-    output_dir : str
-        Directory where the output TIFF will be saved.
-    channel : int
-        Channel index to extract if input is 4D (default 1, green).
-    mean_iterations : int
-        Number of iterative mean-refinement passes (default 3).
+    Args:
+        frame_stack:  Shape (N, H, W) for grayscale or (N, H, W, C) for colour.
+        output_dir:   Directory to save registered frames as 'frame_0001.png'.
+                      If empty/None, no saving is done.
 
-    Returns
-    -------
-    np.ndarray
-        Registered stack as uint8 with shape (frames, H, W).
+    Returns:
+        registered_stack: Same shape and dtype as input.
     """
-    # ---------- 1. Input validation & channel extraction ----------
-    original_shape = frame_stack.shape
-    if len(original_shape) == 4:
-        if channel >= original_shape[3]:
-            raise ValueError(f"Channel {channel} not available. Shape: {original_shape}")
-        frame_stack = frame_stack[:, :, :, channel]
-        print(f"Extracted channel {channel} for registration.")
-    elif len(original_shape) == 3:
-        pass  # already (frames, H, W)
+
+    # Determine shape
+    if frame_stack.ndim == 3:
+        n_frames, H, W = frame_stack.shape
+        is_color = False
+    elif frame_stack.ndim == 4:
+        n_frames, H, W, _ = frame_stack.shape
+        is_color = True
     else:
-        raise ValueError(f"Input must be 3D or 4D. Got shape {original_shape}")
+        raise ValueError("frame_stack must be 3D (N,H,W) or 4D (N,H,W,C)")
 
-    num_frames, H, W = frame_stack.shape
-    print(f"Rigidly registering {num_frames} frames to iterative mean "
-          f"({mean_iterations} iterations)...")
+    # Geometric centre of the image (using pixel indices)
+    center_x = (W - 1) / 2.0
+    center_y = (H - 1) / 2.0
 
-    # Convert to list of SimpleITK images (float for accurate computation)
-    images = [sitk.GetImageFromArray(frame_stack[i].astype(np.float32)) for i in range(num_frames)]
+    registered = np.empty_like(frame_stack)
 
-    # ---------- 2. Helper: rigid registration of moving to fixed ----------
-    def register_pair(fixed_img, moving_img):
-        """Return an Euler2DTransform that aligns moving_img to fixed_img."""
-        transform = sitk.Euler2DTransform()
-        initial_transform = sitk.CenteredTransformInitializer(
-            fixed_img, moving_img, transform,
-            sitk.CenteredTransformInitializerFilter.GEOMETRY
-        )
+    for i in range(n_frames):
+        frame = frame_stack[i]
 
-        reg = sitk.ImageRegistrationMethod()
-        # Mean squares is fast and works well for same-modality images.
-        # For multi-modal, swap to: reg.SetMetricAsMattesMutualInformation()
-        reg.SetMetricAsMeanSquares()
-        reg.SetInterpolator(sitk.sitkLinear)
-        reg.SetOptimizerAsRegularStepGradientDescent(
-            learningRate=1.0, minStep=1e-4, numberOfIterations=200
-        )
-        reg.SetOptimizerScalesFromPhysicalShift()
-        reg.SetInitialTransform(initial_transform, inPlace=False)
-        return reg.Execute(fixed_img, moving_img)
+        # Convert to grayscale float for moment computation
+        if is_color:
+            gray = cv2.cvtColor(frame.astype(np.float32), cv2.COLOR_BGR2GRAY)
+        else:
+            gray = frame.astype(np.float32)
 
-    def resample_to_fixed(moving_img, transform, fixed_img):
-        """Resample moving image to the grid of fixed image."""
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(fixed_img)
-        resampler.SetInterpolator(sitk.sitkLinear)
-        resampler.SetTransform(transform)
-        return resampler.Execute(moving_img)
+        total_intensity = np.sum(gray)
+        if total_intensity == 0:
+            # Empty frame – pass through unchanged
+            registered[i] = frame
+            continue
 
-    # ---------- 3. Iterative mean registration ----------
-    # Initial mean (float)
-    mean_img = sitk.GetImageFromArray(np.mean(frame_stack, axis=0).astype(np.float32))
-    registered_arrays = None
+        # Get raw moments (centroid) and central moments (orientation)
+        M = cv2.moments(gray)
+        cx = M['m10'] / M['m00']
+        cy = M['m01'] / M['m00']
 
-    for it in range(mean_iterations):
-        print(f"  Iteration {it+1}/{mean_iterations}...")
-        temp_arrays = []
+        mu20 = M['mu20']
+        mu02 = M['mu02']
+        mu11 = M['mu11']
 
-        for moving_img in images:
-            transform = register_pair(mean_img, moving_img)
-            resampled = resample_to_fixed(moving_img, transform, mean_img)
-            temp_arrays.append(sitk.GetArrayFromImage(resampled))
+        # Angle of the principal axis (in radians, relative to X-axis)
+        theta = 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
 
-        # Update mean for next iteration, except after the last pass
-        if it < mean_iterations - 1:
-            mean_img = sitk.GetImageFromArray(
-                np.mean(np.array(temp_arrays), axis=0).astype(np.float32)
+        # If the intensity distribution is near‑circular, skip rotation
+        variance = np.sqrt((mu20 - mu02) ** 2 + 4 * mu11 ** 2)
+        is_isotropic = variance < 1e-3 * (mu20 + mu02 + 1e-12)
+
+        if is_isotropic:
+            angle_deg = 0.0
+        else:
+            # Rotate so that the major axis aligns with the vertical (Y‑axis)
+            # (rotate by +90° minus the current angle)
+            angle_deg = np.degrees(np.pi / 2 - theta)
+
+        # Build the rigid transformation matrix (rotation + translation)
+        # Step 1: rotation around the centroid
+        rot_mat = cv2.getRotationMatrix2D((cx, cy), angle_deg, 1.0)
+
+        # Step 2: modify translation so that the centroid maps to the image centre
+        rot_mat[0, 2] += (center_x - cx)
+        rot_mat[1, 2] += (center_y - cy)
+
+        # Apply the affine warp
+        if is_color:
+            shifted = cv2.warpAffine(
+                frame, rot_mat, (W, H),
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0)
             )
         else:
-            registered_arrays = temp_arrays  # final registered frames
+            shifted = cv2.warpAffine(
+                frame, rot_mat, (W, H),
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=0
+            )
 
-    # Stack results and cast to uint8 (matching original OpenCV output)
-    registered_stack = np.stack(registered_arrays, axis=0).astype(np.uint8)
+        # Preserve input dtype (warpAffine returns float64 by default)
+        registered[i] = shifted.astype(frame.dtype)
 
-    # ---------- 4. Save as multi‑page TIFF ----------
-    # os.makedirs(output_dir, exist_ok=True)
-    output_path = output_dir + "/registered_to_mean_rigid.tiff"
-    sitk.WriteImage(sitk.GetImageFromArray(registered_stack), output_path)
-    print(f"Registered stack saved to {output_path}")
+    save_tiff(registered, output_dir, "dumb")
 
-    return registered_stack
-
+    return registered

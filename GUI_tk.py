@@ -18,11 +18,11 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import tkinter as tk
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import cv2
@@ -30,7 +30,7 @@ import numpy as np
 from PIL import Image, ImageTk
 
 # Import your pipeline function(s) here.
-from main import process_and_stabilize, trim_process_stabilize
+from main import trim_process_stabilize
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -259,7 +259,7 @@ class VideoProcessorApp:
         video_path = self.video_path_var.get()
         base_dir = Path(video_path).parent.parent if video_path else Path(".")
         folder_name = f"results_{datetime.now():%Y%m%d-%H%M%S}"
-        target = base_dir / "output" /folder_name
+        target = base_dir / "output" / folder_name
 
         try:
             target.mkdir(parents=True, exist_ok=True)
@@ -404,14 +404,14 @@ class VideoProcessorApp:
             # `settings` also carries model_path / best_frame_idx / save_tiff --
             # thread those through once the pipeline function supports them, e.g.:
             #
-              trim_process_stabilize(
-                  settings.video_path,
-                  settings.output_path,
-                  model_path=settings.model_path,
-                  best_frame=settings.best_frame_idx,
-                  # save_tiff=settings.save_tiff,
-              )
-            # process_and_stabilize(settings.video_path, settings.output_path)
+            trim_process_stabilize(
+                settings.video_path,
+                settings.output_path,
+                model_path=settings.model_path,
+                best_frame=settings.best_frame_idx,
+                # save_tiff=settings.save_tiff,
+            )
+        # process_and_stabilize(settings.video_path, settings.output_path)
         except Exception as exc:  # noqa: BLE001 - surface any pipeline failure to the UI
             logger.exception("Pipeline raised an exception")
             self.root.after(0, self._on_pipeline_error, exc)

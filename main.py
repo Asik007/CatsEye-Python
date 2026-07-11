@@ -1,37 +1,30 @@
-import argparse
-
 import os
-import time
+from pathlib import Path
 
-from CV_steps.Helpers.opener import extract_vid_seg
-from CV_steps.registration import register_frame_stack, register_stack_to_mean_sitk
-from CV_steps.render import vid2seg
-# from line_profiler import profile
-# from CV_steps.stabilize_frame import stabilize_video
+from CV_steps.Helpers.cropper import crop_consistent_rgb
+from CV_steps.Helpers.fileio import extract_vid_seg
 from CV_steps.Isolate.pipeline import process_video_ml
-
-import cv2
-
-# TODO (REORG): Review and tidy this top-level runner.
-# - Move heavy processing logic into small importable functions
-#   so `main.py` stays a thin CLI runner.
-# - Update imports to match new module layout per REORG_PLAN.md.
-# - Ensure each step returns structured outputs (paths, metadata).
-# See: REORG_PLAN.md -> "Main Structure" and "First Cleanup Order".
+from CV_steps.inclass import ProcessingConfig
+from CV_steps.registration import register_frame_stack
+from CV_steps.render import vid2seg
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Combined Pipeline
-# ──────────────────────────────────────────────────────────────────────────────
 
 
-def trim_process_stabilize(
-        video_path: str,
-        output_dir: str,
-        best_frame: int,
-        model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
-):
+def trim_process_stabilize(config: ProcessingConfig):
+    """
+    Process video: trim, isolate sclera, and stabilize frames.
 
+    Args:
+        config: ProcessingConfig instance containing all required inputs.
+    """
+    # Use config attributes
+    video_path = config.video_path
+    output_dir = Path(config.output_dir)
+    best_frame = config.best_frame
+    model_path = config.model_path
+
+    # Ensure output directory exists (already done in __post_init__, but kept for safety)
     os.makedirs(output_dir, exist_ok=True)
 
     print("\n" + "=" * 72)
@@ -39,12 +32,10 @@ def trim_process_stabilize(
     print(f"  Input video      : {video_path}")
     print(f"  Output directory : {output_dir}")
     print(f"  Best frame       : {best_frame}")
-    # print(f"  Number of frames : {num_frames}")
     print("=" * 72)
 
-    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
-    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
+    overlay_path = output_dir / "sclera_overlay.mp4"
+    mask_path = output_dir / "sclera_mask.mp4"
 
     print("\nRunning ML sclera isolation")
     print(f"  Sclera overlay video saved to : {overlay_path}")
@@ -53,190 +44,32 @@ def trim_process_stabilize(
     bad_frames, frame_sizes = process_video_ml(
         video_path=video_path,
         model_path=model_path,
-        output_mask_path=mask_path,
-        output_overlay_path=overlay_path,
+        output_mask_path=str(mask_path),
+        output_overlay_path=str(overlay_path),
     )
 
     print("\nTrim Video Based on Best Frame")
     print("\nGoing to try to cut the video")
 
-    trimmed_vid_path = os.path.join(output_dir, "trimmed_video.mp4")
+    trimmed_vid_path = output_dir / "trimmed_video.mp4"
     print(f"  Trimmed video saving to : {trimmed_vid_path}")
 
     seg_frames = vid2seg(
-        mask_path,
+        str(mask_path),
         bad_frames,
         frame_sizes,
-        trimmed_vid_path,
+        str(trimmed_vid_path),
         best_frame_idx=best_frame,
     )
 
     vid_seg_rgb = extract_vid_seg(overlay_path, seg_frames[0], seg_frames[1], output_dir)
 
+    vid_seg_rgb = crop_consistent_rgb(vid_seg_rgb)
+
     print(f"Trimmed video saved to: {trimmed_vid_path}")
 
     print(f"Registering frames and saving to tiff")
 
+    # reg_seg = run_all_methods(vid_seg_rgb, reference='mean', output_dir=output_dir)
+    # Alternative commented out:
     reg_seg = register_frame_stack(vid_seg_rgb, output_dir)
-
-    # reg_seg = register_stack_to_mean_sitk(vid_seg_rgb, output_dir)
-
-
-
-
-
-
-
-# @profile
-def process_and_stabilize(
-    video_path: str,
-    output_dir: str,
-    model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
-    # smooth_radius: int = 50,
-    ) -> dict:
-    
-    """
-    Full pipeline:
-
-      1. Open the video and show the first frame for ROI selection.
-         The chosen ROI is used as the cross-correlation template.
-      2. Track the ROI across every frame → displacement / motion data.
-      3. Render a *motion-tracking video* that overlays the trail,
-         moving ROI box, and per-frame displacement on the original footage.
-      4. Stabilise the original video with optical-flow stabilisation.
-      5. Save tracking data to CSV.
-
-    Returns a dict with paths to all outputs and summary counts.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    print("\n" + "=" * 72)
-    print("Starting video processing pipeline")
-    print(f"  Input video      : {video_path}")
-    print(f"  Output directory : {output_dir}")
-    print("=" * 72)
-
-    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
-    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
-
-    print("\n[1/2] Running ML sclera isolation")
-    print("  Using model      : ML_stuff/best.pt")
-    print("  Confidence       : 0.25")
-    print("  Inference size   : 512")
-    print(f"  Mask output      : {mask_path}")
-    print(f"  Overlay output   : {overlay_path}")
-
-
-    print(f"  Sclera overlay video saved to : {overlay_path}")
-    print(f"  Sclera mask video saved to    : {mask_path}")
-
-
-    # isolated_video = os.path.join(output_dir, "sclera_isolated.mp4")
-    overlay_path = os.path.join(output_dir, "sclera_overlay.mp4")
-    mask_path = os.path.join(output_dir, "sclera_mask.mp4")
-    process_video_ml(
-        video_path=video_path,
-        model_path=model_path,
-        output_mask_path=mask_path,
-        output_overlay_path=overlay_path,
-        conf=0.25,
-        imgsz=512,
-    )
-
-    # XCorr tracking + video render
-    # Each on of these steps opens the video independently, but each step must come after the previous one finishes to ensure the video file is not being accessed by multiple processes at once.
-
-    # tracking_video = os.path.join(output_dir, "motion_tracking.mp4")
-    # xCorr_pipeline(video_path, output_dir, smooth_radius=smooth_radius)
-    # print(f"\n  Motion-tracking video → {tracking_video}")
-    # print(f"\n  csv tracking data → {output_dir + '/tracking_results.csv'}")
-    
-    # ── 6. Extract Sclera ────────────────────────────────────────────────────────────────
-
-    # sclera_pipeline(video_path, overlay_path, mask_path)
-    print("\n  Sclera overlay video → " + overlay_path)
-    print("\n  Sclera mask video → " + mask_path)
-
-
-
-    # ── 4. Stabilisation ──────────────────────────────────────────────────────
-    stabilized_video = os.path.join(output_dir, "stabilized.mp4")
-    print(f"\n► Stabilising video (smooth_radius={0})…\n  → {stabilized_video}")
-    stabilize_video(overlay_path, stabilized_video)
-
-    return {
-        # "tracking_video":   tracking_video,
-        "stabilized_video": stabilized_video,
-        # "csv_path":         csv_path,
-        # "frames_tracked":   len(tracked_points),
-        "sclera_overlay":   overlay_path,
-        "sclera_mask":      mask_path,
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────────────────
-
-# just for testing how long it takes
-
-
-def _run_cli() -> None:
-    cwd = os.getcwd()
-
-    parser = argparse.ArgumentParser(description="Stabilise a video file.")
-    parser.add_argument("--video",    default=os.path.join(cwd, "uploads", "output_001.mp4"), help="Path to source video.")
-    parser.add_argument("--output",   default=os.path.join(cwd, "output"),                    help="Base output directory.")
-    parser.add_argument("--debug",   default=False, type=bool,                                help="Smoothing radius for stabilisation (in pixels).")
-    parser.add_argument("--tiif-output", default=False, type=bool, help="Save tracking data to stacked tiff.")
-    parser.add_argument("--chosen-frame",default=0, type=int, help="Chosen frame." ) # make this into slider in the GUI version
-    args = parser.parse_args()
-
-    output_dir = os.path.join(args.output, "results_" + time.strftime("%Y%m%d-%H%M%S"))
-
-    print(f"\n► Processing video: {args.video}")
-    print(f" Debug Pipeline: {args.debug}")
-    start = time.perf_counter()
-    result = process_and_stabilize(args.video, output_dir)
-    elapsed = time.perf_counter() - start
-
-    print("✓ All done.")
-    print(f"  Stabilised video      : {result['stabilized_video']}")
-    print(f"  Total processing time : {elapsed:.2f} seconds")
-
-# if __name__ == "__main__":
-#     _run_cli()
-
-# new process test
-# if __name__ == "__main__":
-#     trim_process_stabilize(
-#         video_path= r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1734.MOV",
-#         output_dir= os.path.join(r"C:\Users\dragon\Code\CatsEye-Python\output", "results_" + time.strftime("%Y%m%d-%H%M%S")),
-#         best_frame= 10,
-#         # num_frames: int = 50,
-#         # model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
-#     )
-
-
-# old test process
-if __name__ == "__main__":
-    process_and_stabilize(
-        video_path= r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1734.MOV",
-        output_dir= os.path.join(r"C:\Users\dragon\Code\CatsEye-Python\output", "results_" + time.strftime("%Y%m%d-%H%M%S")),
-        # model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt",
-    )
-# command to get the same output as the CLI but without the CLI interface, just for testing how long it takes
-# if __name__ == "__main__":
-#     video = os.path.join(os.getcwd(), "uploads", "output_001.mp4")
-#     output = os.path.join(os.getcwd(), "output")
-#     radius = 50
-#     output_dir = os.path.join(output, "results_" + time.strftime("%Y%m%d-%H%M%S"))
-
-#     start = time.perf_counter()
-#     result = process_and_stabilize(video, output_dir, smooth_radius=radius)
-#     elapsed = time.perf_counter() - start
-
-#     print("\n✓ All done.")
-#     print(f"  Stabilised video      : {result['stabilized_video']}")
-#     print(f"  Total processing time : {elapsed:.2f} seconds")
