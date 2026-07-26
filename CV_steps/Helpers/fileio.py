@@ -68,7 +68,10 @@ def extract_vid_seg(
     return frame_stack
 
 
-def save_tiff(frame_stack: np.ndarray, output_dir: Path, output_name: str):
+def save_tiff(frame_stack: np.ndarray, output_dir: Path, output_name: str, raw: bool = False):
     tiff_path = output_dir / f"{output_name}_stack.tiff"
     print(f"Saving registered stack to {tiff_path}")
-    success = cv2.imwritemulti(tiff_path, frame_stack.astype(np.uint8))
+    output = frame_stack.astype(np.uint8)
+    if raw:
+        output = frame_stack
+    success = cv2.imwritemulti(tiff_path, frame_stack)

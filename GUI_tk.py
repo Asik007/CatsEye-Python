@@ -1,7 +1,7 @@
 """
 Integrated Tkinter GUI for the video processing pipeline.
 
-This GUI wires up directly to `process_and_stabilize()` (imported from `main.py`).
+This GUI wires up directly to `trim_process_stabilize()` (imported from `main.py`).
 It lets a user:
   - pick an input video and preview any frame from it,
   - choose an output folder (or auto-generate a timestamped one),
@@ -20,7 +20,6 @@ import os
 import threading
 import tkinter as tk
 import traceback
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -29,8 +28,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-# Import your pipeline function(s) here.
-from main import trim_process_stabilize
+from CV_steps.inclass import ProcessingConfig
+from main import  trim_process_stabilize
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -60,25 +59,9 @@ MODEL_FILETYPES = [
     ("All files", "*.*"),
 ]
 
-DEFAULT_MODEL_PATH = "ML_stuff/exports/model_640_False.onnx"
-
-
-@dataclass
-class ProcessingSettings:
-    """
-    Plain container for everything a single pipeline run needs.
-
-    Collecting widget state into one object (instead of reaching into `self`
-    from inside the background thread) decouples the UI layer from the
-    pipeline layer -- the thread only ever sees this dataclass, never a Tk
-    widget, which avoids the classic "touched a widget from a worker thread"
-    class of Tkinter bugs.
-    """
-    video_path: str
-    output_path: str
-    model_path: str
-    best_frame_idx: int
-    save_tiff: bool
+# Pulled from ProcessingConfig itself so the GUI default and the pipeline
+# default can never drift out of sync.
+DEFAULT_MODEL_PATH = ProcessingConfig.__dataclass_fields__["model_path"].default
 
 
 class VideoProcessorApp:
@@ -170,6 +153,10 @@ class VideoProcessorApp:
         self.idx_unit.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
         # Save-as-TIFF checkbox
+        # NOTE: ProcessingConfig has no save_tiff field yet, so this value is
+        # collected in the UI but not currently forwarded to the pipeline.
+        # Add a `save_tiff: bool = False` field to ProcessingConfig once the
+        # pipeline supports it, then wire it up in collect_settings().
         check_frame = ttk.Frame(params_frame)
         check_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=5)
         self.tiff_var = tk.BooleanVar()
@@ -334,26 +321,25 @@ class VideoProcessorApp:
     # ────────────────────────────────────────────────────────────────
     # SETTINGS / VALIDATION
     # ────────────────────────────────────────────────────────────────
-    def collect_settings(self) -> ProcessingSettings:
-        """Gather all relevant widget state into a single plain object for the pipeline."""
-        return ProcessingSettings(
+    def collect_settings(self) -> ProcessingConfig:
+        """Gather all relevant widget state into a single ProcessingConfig for the pipeline."""
+        return ProcessingConfig(
             video_path=self.video_path_var.get(),
-            output_path=self.output_path_var.get(),
-            model_path=self.model_path_var.get(),
-            best_frame_idx=self.frame_idx,
-            save_tiff=self.tiff_var.get(),
+            output_dir=self.output_path_var.get(),
+            best_frame=self.frame_idx,
+            model_path=self.model_path_var.get() or DEFAULT_MODEL_PATH,
         )
 
-    def validate_settings(self, settings: ProcessingSettings) -> str | None:
-        """Return a human-readable error message if settings are invalid, else None."""
-        if not settings.video_path or not os.path.exists(settings.video_path):
+    def validate_settings(self, config: ProcessingConfig) -> str | None:
+        """Return a human-readable error message if the config is invalid, else None."""
+        if not config.video_path or not os.path.exists(config.video_path):
             return "Please select a valid video file."
-        if not settings.output_path:
+        if not config.output_dir:
             return "Please select an output directory."
-        if settings.model_path and not os.path.exists(settings.model_path):
+        if config.model_path and not os.path.exists(config.model_path):
             # Not necessarily fatal (the pipeline may resolve relative paths
             # differently), but worth flagging before burning time on a run.
-            return f"Model path does not exist:\n{settings.model_path}"
+            return f"Model path does not exist:\n{config.model_path}"
         return None
 
     # ────────────────────────────────────────────────────────────────
@@ -365,14 +351,14 @@ class VideoProcessorApp:
             messagebox.showinfo("Info", "Processing already in progress.")
             return
 
-        settings = self.collect_settings()
-        error = self.validate_settings(settings)
+        config = self.collect_settings()
+        error = self.validate_settings(config)
         if error:
             messagebox.showerror("Error", error)
             return
 
         try:
-            os.makedirs(settings.output_path, exist_ok=True)
+            os.makedirs(config.output_dir, exist_ok=True)
         except OSError as exc:
             messagebox.showerror("Error", f"Could not create output directory:\n{exc}")
             return
@@ -380,18 +366,17 @@ class VideoProcessorApp:
         self._set_processing_state(True)
 
         logger.info(
-            "Starting processing | video=%s output=%s frame_idx=%s tiff=%s model=%s",
-            settings.video_path,
-            settings.output_path,
-            settings.best_frame_idx,
-            settings.save_tiff,
-            settings.model_path,
+            "Starting processing | video=%s output_dir=%s best_frame=%s model=%s",
+            config.video_path,
+            config.output_dir,
+            config.best_frame,
+            config.model_path,
         )
 
-        thread = threading.Thread(target=self._run_pipeline, args=(settings,), daemon=True)
+        thread = threading.Thread(target=self._run_pipeline, args=(config,), daemon=True)
         thread.start()
 
-    def _run_pipeline(self, settings: ProcessingSettings) -> None:
+    def _run_pipeline(self, config: ProcessingConfig) -> None:
         """
         Runs on a background thread.
 
@@ -400,18 +385,9 @@ class VideoProcessorApp:
         `self.root.after(...)`, as the success/error handlers below do.
         """
         try:
-            # NOTE: process_and_stabilize currently only accepts (video, output).
-            # `settings` also carries model_path / best_frame_idx / save_tiff --
-            # thread those through once the pipeline function supports them, e.g.:
-            #
-            trim_process_stabilize(
-                settings.video_path,
-                settings.output_path,
-                model_path=settings.model_path,
-                best_frame=settings.best_frame_idx,
-                # save_tiff=settings.save_tiff,
-            )
-        # process_and_stabilize(settings.video_path, settings.output_path)
+            # trim_process_stabilize now takes a single ProcessingConfig
+            # instead of discrete positional/keyword arguments.
+            trim_process_stabilize(config)
         except Exception as exc:  # noqa: BLE001 - surface any pipeline failure to the UI
             logger.exception("Pipeline raised an exception")
             self.root.after(0, self._on_pipeline_error, exc)

@@ -4,6 +4,8 @@ from typing import List, Optional, Tuple
 
 from numpy import ndarray
 
+from CV_steps.inclass import ProcessingConfig
+
 
 def find_seg(
         num_frames: int,
@@ -47,13 +49,9 @@ def find_seg(
 
 
 def vid2seg(
-        video_path: str,
+        config: ProcessingConfig,
         bad_frames: List[int],
         frame_sizes: List[ndarray[Tuple[int, int, int, int]]],
-        output_path: str,
-        max_len: int = 50,
-        best_frame_idx: Optional[int] = None,
-        outlier_std: float = 1.0,
     ) -> list:
     """
     Extract a continuous segment (≤ max_len) from the video, avoiding bad frames
@@ -61,27 +59,26 @@ def vid2seg(
     standard deviations from the mean area.
 
     Parameters:
-        video_path: path to input video.
+        config: the big dataclass
+        config.sclera_mask_path: path to input video to be segmented.
+        config.output_dir: where to write the selected segment.
+        config.max_len: maximum allowed length of the extracted segment.
+        config.best_frame_idx: if given, prefer a segment containing this frame.
+        config.outlier_std: number of standard deviations for area‑based outlier rejection.
         bad_frames: list of indices already known to be bad.
         frame_sizes: for each frame, either None (no detection) or a tuple
                      (tl_x, tl_y, br_x, br_y).
-        output_path: where to write the selected segment.
-        max_len: maximum allowed length of the extracted segment.
-        best_frame_idx: if given, prefer a segment containing this frame.
-        outlier_std: number of standard deviations for area‑based outlier rejection.
-
     Returns:
         (start_frame, end_frame) of the extracted segment.
     """
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(config.sclera_mask_path)
     if not cap.isOpened():
-        raise IOError(f"Cannot open video: {video_path}")
+        raise IOError(f"Cannot open video: {config.sclera_mask_path}")
 
     num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
 
     bad_frames = set(bad_frames)
     frame_areas = {}  # i -> area, for frames that passed the basic checks
@@ -103,8 +100,8 @@ def vid2seg(
     if frame_areas:
         areas = np.array(list(frame_areas.values()))
         mean_area, std_area = areas.mean(), areas.std()
-        lower_bound = mean_area - outlier_std * std_area
-        upper_bound = mean_area + outlier_std * std_area
+        lower_bound = mean_area - config.outlier_std * std_area
+        upper_bound = mean_area + config.outlier_std * std_area
 
         for i, area in frame_areas.items():
             if area < lower_bound or area > upper_bound:
@@ -122,16 +119,20 @@ def vid2seg(
     start_frame, end_frame = find_seg(
         num_frames=num_frames,
         bad_frames=bad_frames,
-        best_frame_idx=best_frame_idx,
-        max_len=max_len,
+        best_frame_idx=config.best_frame,
+        max_len=config.seg_max_len,
     )
 
     # ---- Write the segment ----
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
+
+    if config.trimmed_vid_mask_path == "":
+        config.trimmed_vid_mask_path = config.output_dir + "/trimmed_sclera_vid.mp4"
+
+    out = cv2.VideoWriter(config.trimmed_vid_mask_path, fourcc, fps, (w, h))
     if not out.isOpened():
         cap.release()
-        raise IOError(f"Cannot create output video: {output_path}")
+        raise IOError(f"Cannot create output video: {config.trimmed_vid_mask_path}")
 
     frame_idx = 0
     # seg_frames = []
@@ -147,7 +148,7 @@ def vid2seg(
     cap.release()
     out.release()
 
-    print(f"Segment saved: frames {start_frame}-{end_frame} to {output_path}")
+    print(f"Segment saved: frames {start_frame}-{end_frame} to {config.trimmed_vid_mask_path}")
     return [start_frame, end_frame]
 
 # TODO: i mean we can detect if a frame is moving/blurry but idk if its worth it

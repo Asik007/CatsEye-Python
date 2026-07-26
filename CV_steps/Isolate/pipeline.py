@@ -26,6 +26,7 @@ import numpy as np
 
 # from .Sclera_IP import process_eye_pipeline
 from .Sclera_INFER import load_segmentation_model, process_image
+from ..inclass import ProcessingConfig
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,13 +73,10 @@ def process_image_ml(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def process_video_ml(
-    video_path: str,
-    model_path: str,
-    output_mask_path: Optional[str] = None,
-    output_overlay_path: Optional[str] = None,
-    conf: float = 0.25,
-    imgsz: int = 640,
+        config: ProcessingConfig
 ) -> tuple[list[int], list[np.ndarray]]:
+    
+    
     """
     Process video using ML-based segmentation (Sclera_ML).
 
@@ -91,9 +89,9 @@ def process_video_ml(
         conf: Confidence threshold
         imgsz: Inference image size
     """
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(config.video_path)
     if not cap.isOpened():
-        raise IOError(f"Cannot open video: {video_path}")
+        raise IOError(f"Cannot open video: {config.video_path}")
 
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -101,27 +99,34 @@ def process_video_ml(
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     bad_frames = []
     mask_sizes = []
-
-
-    print(f"Processing video: {video_path}")
+    print(f"Processing video: {config.video_path}")
     print(f"Frames: {n_frames}, Resolution: {w}x{h}, FPS: {fps}")
 
-    model = load_segmentation_model(model_path)
-    print(f"Model loaded from: {model_path}")
+
+    model = load_segmentation_model(config.model_path)
+    print(f"Model loaded from: {config.model_path}")
+
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
+    if config.sclera_mask_path == "":
+        config.sclera_mask_path = config.output_dir + r"\sclera_mask.mp4"
+
     mask_writer = None
-    if output_mask_path is not None:
-        Path(output_mask_path).parent.mkdir(parents=True, exist_ok=True)
-        mask_writer = cv2.VideoWriter(str(output_mask_path), fourcc, fps, (w, h), isColor=False)
-        print(f"Mask output: {output_mask_path}")
+    if config.sclera_mask_path is not None:
+        mask_writer = cv2.VideoWriter(str(config.sclera_mask_path), fourcc, fps, (w, h), isColor=False)
+        print(f"Mask output: {config.sclera_mask_path}")
 
     overlay_writer = None
-    if output_overlay_path is not None:
-        Path(output_overlay_path).parent.mkdir(parents=True, exist_ok=True)
-        overlay_writer = cv2.VideoWriter(str(output_overlay_path), fourcc, fps, (w, h))
-        print(f"Overlay output: {output_overlay_path}")
+    if config.sclera_overlay_path == "":
+        config.sclera_overlay_path = config.output_dir + r"\sclera_overlay.mp4"
+
+    if config.sclera_overlay_path is not None:
+        overlay_writer = cv2.VideoWriter(str(config.sclera_overlay_path), fourcc, fps, (w, h))
+        print(f"Overlay output: {config.sclera_overlay_path}")
+
+
+    mask_stack = []
 
     for i in range(n_frames):
         ret, frame = cap.read()
@@ -129,7 +134,7 @@ def process_video_ml(
             print(f"Warning: Could not read frame {i}, stopping early.")
             break
 
-        print(f" Processing frame {i}")
+        # print(f" Processing frame {i}")
         mask, overlay, boxes = process_image(
             image_bgr=frame,
             model=model,
@@ -148,6 +153,7 @@ def process_video_ml(
         if overlay_writer is not None:
             overlay_writer.write(overlay)
 
+        # TODO: Theres a numpy function to flatten the boxes to something normal
         mask_sizes.append(boxes)
         if (i + 1) % 10 == 0:
             print(f"Progress: {i + 1}/{n_frames} frames processed")
@@ -155,6 +161,7 @@ def process_video_ml(
     cap.release()
     if mask_writer is not None:
         mask_writer.release()
+        print("release writer")
     if overlay_writer is not None:
         overlay_writer.release()
 
@@ -166,125 +173,3 @@ def process_video_ml(
 # ─────────────────────────────────────────────────────────────────────────────
 # DISPATCH
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def run_image(args: argparse.Namespace) -> None:
-    """Dispatch single-image processing based on --mode."""
-    print(f"Processing image: {args.image}")
-
-    target_class = None if args.class_name.lower() == "all" else args.class_name
-
-    if args.mode == "ml":
-        mask, overlay = process_image_ml(
-            args.image,
-            args.model,
-            target_class=target_class,
-            conf=args.conf,
-            imgsz=args.imgsz,
-        )
-    else:
-        mask, overlay = process_image_ip(args.image)
-
-    Path(args.out_mask).parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(args.out_mask), mask)
-    cv2.imwrite(str(args.out_overlay), overlay)
-    print(f"Saved mask:    {args.out_mask}")
-    print(f"Saved overlay: {args.out_overlay}")
-
-
-def run_video(args: argparse.Namespace) -> None:
-    """Dispatch video processing based on --mode."""
-    print(f"Processing video: {args.video}")
-
-    target_class = None if args.class_name.lower() == "all" else args.class_name
-
-    if args.mode == "ml":
-        process_video_ml(
-            args.video,
-            args.model,
-            output_mask_path=args.out_mask,
-            output_overlay_path=args.out_overlay,
-            target_class=target_class,
-            conf=args.conf,
-            imgsz=args.imgsz,
-        )
-    else:
-        process_video_ip(
-            args.video,
-            args.out_overlay,
-            args.out_mask,
-            max_workers=args.workers,
-            debug=args.debug,
-        )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def parse_args() -> argparse.Namespace:
-
-    parser = argparse.ArgumentParser(
-        description="Isolate sclera from images/videos using IP or ML methods."
-    )
-
-    # parser.add_argument(
-    #     "--mode",
-    #     choices=["ip", "ml"],
-    #     default="ml",
-    #     help="Isolation method: 'ip' (classical) or 'ml' (YOLO)",
-    # )
-    parser.add_argument("--image", help="Input image path (single image mode)")
-    parser.add_argument("--video", help="Input video path")
-    parser.add_argument(
-        "--model",
-        default="ML_stuff/best.pt",
-        help="Path to YOLO model (ML mode only)",
-    )
-    parser.add_argument(
-        "--out-mask",
-        default="output/testing/sclera_mask.mp4",
-        help="Output path for mask video",
-    )
-    parser.add_argument(
-        "--out-overlay",
-        default="output/testing/sclera_overlay.mp4",
-        help="Output path for overlay video",
-    )
-    parser.add_argument(
-        "--class-name",
-        default="Eye",
-        help="Target class name in ML model. Use 'all' for all classes.",
-    )
-    parser.add_argument(
-        "--conf", type=float, default=0.5, help="Confidence threshold (ML mode)"
-    )
-    parser.add_argument(
-        "--imgsz", type=int, default=640, help="Inference image size (ML mode)"
-    )
-    parser.add_argument(
-        "--workers", type=int, default=4, help="Max workers for parallel processing (IP mode)"
-    )
-    parser.add_argument("--debug", action="store_true", help="Enable debug output")
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-
-    if args.image is None and args.video is None:
-        print("Error: provide --image or --video")
-        return
-
-    try:
-        if args.image is not None:
-            run_image(args)
-        if args.video is not None:
-            run_video(args)
-    except Exception as e:
-        print(f"Error: {e}")
-
-
-if __name__ == "__main__":
-    main()
