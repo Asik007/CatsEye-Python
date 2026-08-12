@@ -82,11 +82,12 @@ def trim_process_stabilize(config: ProcessingConfig):
     print(f"Registration complete. Saved to {output_dir / 'reg_stack.tiff'}")
 
 
-    print(f"Background Elimination starting")
-    
+
+    # print(f"Background Elimination starting")
+    #
     # bac_seg = process_rolling_ball(ecc_seg, 50, True)
-    
-    print(f"Background Elimination complete.")
+    #
+    # print(f"Background Elimination complete.")
     
     # save_tiff(bac_seg, output_dir, "bac")
     

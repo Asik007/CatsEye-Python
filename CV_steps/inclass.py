@@ -6,7 +6,32 @@ from torch._C import OptionalType
 
 @dataclass
 class ProcessingConfig:
-    """Configuration for the video processing pipeline."""
+    """
+    Configuration for the video processing pipeline.
+
+    This dataclass holds all parameters required to process a video, including
+    input sources, model settings, and output paths. It distinguishes between
+    required fields (no default) and optional ones.
+
+    Path handling behavior:
+        - Fields with a default of `None` indicate that the corresponding output
+          should **not** be saved.
+        - Fields with a default of `""` (empty string) indicate that a default
+          naming scheme should be used for the output file.
+        - The `sclera_mask_path` is an exception: it cannot be `None` (it
+          defaults to an empty string, implying default naming).
+
+    Note:
+        The `bad_frames` field is a mutable list. It is initialised to `None`
+        to avoid the common mutable-default pitfall. A verifier class should be
+        used to populate it with a list of frame indices (length equal to the
+        total number of frames) after validation.
+
+    TODO:
+        Consider replacing this with a verify script that renames/adds files
+        instead of relying on these path flags.
+    """
+
     # None => don't save
     # Blank string => default naming
     # TODO: should probably change this to add a verify script and rename/add instead
