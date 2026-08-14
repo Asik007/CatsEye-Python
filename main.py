@@ -1,11 +1,14 @@
 import os
+import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from CV_steps.Helpers.cropper import crop_consistent_rgb
 from CV_steps.Helpers.fileio import extract_vid_seg, save_tiff
 from CV_steps.Isolate.FRUnet_infer import FRUnet
+from CV_steps.Isolate.binary_cleaning import bin_pipeline, data_bin
 from CV_steps.Isolate.pipeline import process_video_ml
 from CV_steps.inclass import ProcessingConfig
 from CV_steps.metrics import print_registration_quality
@@ -70,25 +73,41 @@ def trim_process_stabilize(config: ProcessingConfig):
 
     dumb_seg = dumb_register(vid_seg_rgb, output_dir)
     print("dumb reg stats:")
-    print_registration_quality(dumb_seg)
+    # print_registration_quality(dumb_seg)
     print("ECC reg stats:")
     ecc_seg = ecc_rigid_register(dumb_seg, output_dir, border=100)
-    print_registration_quality(ecc_seg)
+    # print_registration_quality(ecc_seg)
 
     print(f"Registration complete. Saved to {output_dir / 'reg_stack.tiff'}")
 
     print("Isolate Vessels via UNet")
     FR_net = FRUnet(output_path=output_dir)
-    for frame in range(4):
-        print(f"Processing frame {frame + 1}/{ecc_seg.shape[0]}")
-        FR_net.Execute(ecc_seg[frame, :, :, 1].astype(np.float32))
-    
+
+    pred_stack = np.zeros([ecc_seg.shape[0],ecc_seg.shape[1], ecc_seg.shape[2]])
+    bin_stack = np.zeros([ecc_seg.shape[0],ecc_seg.shape[1], ecc_seg.shape[2]])
+
+    # just change the range for the full length
+
+    # for frame in range(4):
+    for i, frame in enumerate(ecc_seg):
+        print(f"Processing frame {i}/{ecc_seg.shape[0] - 1}")
+        _preds, bin_map = FR_net.Execute(frame[:, :, 1].astype(np.float32)) # first return is the probability map which we throwout
+        _bins = data_bin(bin_map.astype(np.uint8), output_dir)
+        pred_stack[i] =_preds
+        print(_bins.shape)
+        bin_stack[i] = _bins
+        # cv2.imshow("bin_map", bin_seg)
+    # save pred stack np.arraay[N, H, W] as multpagetiff
+    save_tiff(pred_stack, output_dir, "pred_stack")
+    save_tiff(bin_stack, output_dir, "bin_stack")
+
 
 
 
 
 if __name__ == "__main__":
     # Example usage:
+    curr_time = time.time()
     config_example = ProcessingConfig(
         video_path=r"uploads\IMG_1745.MOV",
         output_dir=r"output\testing",
@@ -97,6 +116,8 @@ if __name__ == "__main__":
     )
 
     trim_process_stabilize(config_example)
+
+    print(f"Processing completed in {curr_time - time.time()} seconds")
 
 
 

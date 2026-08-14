@@ -28,7 +28,7 @@ class YOLOModel:
     # Return ONNX Runtime providers
     def GetProviders(self) -> list[str]:
         print(f"Available ONNX Runtime providers: {onnxruntime.get_available_providers()}")
-        provider = [provider for provider in ("CUDAExecutionProvider", "CPUExecutionProvider", "DmlExecutionProvider") if provider in onnxruntime.get_available_providers()]
+        provider = [provider for provider in ("CUDAExecutionProvider", "DmlExecutionProvider",) if provider in onnxruntime.get_available_providers()]
         print(f"Using ONNX Runtime providers: {provider}")
         return provider
 
@@ -123,7 +123,7 @@ class YOLOModel:
     # "mask" is a boolean HxW array the same size as the input image.
     def Predict(self, image: numpy.ndarray) -> list[dict]:
         (input, padding) = self.GetInput(image)
-        print(f"Input shape: {input.shape}, padding: {padding}")
+        # print(f"Input shape: {input.shape}, padding: {padding}")
         output = self._session.run(None, {self._session.get_inputs()[0].name: input})
         return self.ProcessDetections(image, output, padding)
 
@@ -217,4 +217,3 @@ class YOLOModel:
         else:
             raise ValueError("Invalid shift axis specified.")
         return shiftedMasks
-
