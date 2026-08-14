@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from torch._C import OptionalType
-
 
 @dataclass
 class ProcessingConfig:
@@ -52,5 +50,6 @@ class ProcessingConfig:
 
     # this one is funky because its a mutable but I can just make it a list that is as long as the amount of frames
     # which needs a verifier class
-    bad_frames: OptionalType[list] = None
+    bad_frames: list[int] | None = None
+
 

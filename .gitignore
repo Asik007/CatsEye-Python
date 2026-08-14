@@ -3,11 +3,9 @@
 /output/results_*
 /output/testing_sclera/frames
 *.pyc
-/CV_steps/__pycache__
+
 /CV_steps/__pycache__
 uploads/IMG_1838.mov
-/output
-/ML_stuff/exports
 
 # Ignore the entire JetBrains IDE folder by default
 .idea/
@@ -17,9 +15,11 @@ uploads/IMG_1838.mov
 !.idea/codeStyles/
 !.idea/inspectionProfiles/
 !.idea/vcs.xml
-/catseye
-/GUI_tk.dist
-/CV_steps/__pycache__
-/CV_steps/__pycache__
+
 .idea/catseye-python.iml
-.idea/catseye-python.iml
+
+/.venv
+/__pycache__
+
+/ML_stuff/exports
+ML_stuff/runs/segment/train/weights

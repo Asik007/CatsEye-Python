@@ -27,7 +27,10 @@ class YOLOModel:
 
     # Return ONNX Runtime providers
     def GetProviders(self) -> list[str]:
-        return [provider for provider in ("CUDAExecutionProvider", "CPUExecutionProvider") if provider in onnxruntime.get_available_providers()]
+        print(f"Available ONNX Runtime providers: {onnxruntime.get_available_providers()}")
+        provider = [provider for provider in ("CUDAExecutionProvider", "CPUExecutionProvider", "DmlExecutionProvider") if provider in onnxruntime.get_available_providers()]
+        print(f"Using ONNX Runtime providers: {provider}")
+        return provider
 
     # Execute model and return the drawn overlay (keeps old behavior for callers that want an annotated image)
     def Execute(self, image: numpy.ndarray) -> numpy.ndarray:
@@ -120,6 +123,7 @@ class YOLOModel:
     # "mask" is a boolean HxW array the same size as the input image.
     def Predict(self, image: numpy.ndarray) -> list[dict]:
         (input, padding) = self.GetInput(image)
+        print(f"Input shape: {input.shape}, padding: {padding}")
         output = self._session.run(None, {self._session.get_inputs()[0].name: input})
         return self.ProcessDetections(image, output, padding)
 

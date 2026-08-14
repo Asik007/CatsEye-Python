@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
 
+import numpy as np
+
 from CV_steps.Helpers.cropper import crop_consistent_rgb
 from CV_steps.Helpers.fileio import extract_vid_seg, save_tiff
+from CV_steps.Isolate.FRUnet_infer import FRUnet
 from CV_steps.Isolate.pipeline import process_video_ml
 from CV_steps.inclass import ProcessingConfig
 from CV_steps.metrics import print_registration_quality
@@ -65,13 +68,6 @@ def trim_process_stabilize(config: ProcessingConfig):
 
     print(f"Registering frames and saving to tiff")
 
-    # reg_seg = run_all_methods(vid_seg_rgb, reference='mean', output_dir=output_dir)
-    # Alternative commented out:
-    # reg_seg = register_frame_stack(vid_seg_rgb, output_dir)
-    # print("stack reg stats:")
-    # print_registration_quality(reg_seg)
-    # save_tiff(reg_seg, output_dir, "reg_stack")
-
     dumb_seg = dumb_register(vid_seg_rgb, output_dir)
     print("dumb reg stats:")
     print_registration_quality(dumb_seg)
@@ -81,26 +77,23 @@ def trim_process_stabilize(config: ProcessingConfig):
 
     print(f"Registration complete. Saved to {output_dir / 'reg_stack.tiff'}")
 
+    print("Isolate Vessels via UNet")
+    FR_net = FRUnet(output_path=output_dir)
+    for frame in range(4):
+        print(f"Processing frame {frame + 1}/{ecc_seg.shape[0]}")
+        FR_net.Execute(ecc_seg[frame, :, :, 1].astype(np.float32))
+    
 
 
-    # print(f"Background Elimination starting")
-    #
-    # bac_seg = process_rolling_ball(ecc_seg, 50, True)
-    #
-    # print(f"Background Elimination complete.")
-    
-    # save_tiff(bac_seg, output_dir, "bac")
-    
-    print(f"Background Elimination saved to {output_dir / 'bac_stack.tiff'}")
 
 
 if __name__ == "__main__":
     # Example usage:
     config_example = ProcessingConfig(
-        video_path=r"C:\Users\dragon\Code\CatsEye-Python\uploads\IMG_1745.MOV",
-        output_dir=r"C:\Users\dragon\Code\CatsEye-Python\output\testing",
+        video_path=r"uploads\IMG_1745.MOV",
+        output_dir=r"output\testing",
         best_frame=10,
-        model_path=r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\exports\model_640_False.onnx",
+        model_path=r"ML_stuff\exports\model_640_False.onnx",
     )
 
     trim_process_stabilize(config_example)
