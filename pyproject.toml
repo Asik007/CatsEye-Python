@@ -9,9 +9,8 @@ dependencies = [
     "opencv-contrib-python>=5.0.0.93",
     "pillow>=12.2.0",
     "onnxruntime-gpu>=1.28.0",
-
     #    "ultralytics>=8.4.92",
-    "onnxruntime-directml>=1.24.4",
+#    "onnxruntime-directml>=1.24.4",
     "scipy-stubs~=1.18.0",
 ]
 

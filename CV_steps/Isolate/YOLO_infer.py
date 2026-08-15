@@ -28,7 +28,10 @@ class YOLOModel:
     # Return ONNX Runtime providers
     def GetProviders(self) -> list[str]:
         print(f"Available ONNX Runtime providers: {onnxruntime.get_available_providers()}")
-        provider = [provider for provider in ("CUDAExecutionProvider", "DmlExecutionProvider",) if provider in onnxruntime.get_available_providers()]
+        provider = [provider for provider in (
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "CPUExecutionProvider") if provider in onnxruntime.get_available_providers()]
         print(f"Using ONNX Runtime providers: {provider}")
         return provider
 

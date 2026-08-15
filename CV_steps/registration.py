@@ -3,47 +3,47 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from pystackreg import StackReg
+# from pystackreg import StackReg
 
 from CV_steps.Helpers.fileio import save_tiff
 
 
-def register_frame_stack(
-        frame_stack: np.ndarray,
-        output_dir: Path,
-        reference: str = 'mean') -> np.ndarray:
-    """
-    Registers a 3D NumPy array (stack of frames) using pystackreg.
-    align to mean frame.
-
-    Parameters:
-    -----------
-    frame_stack : np.ndarray
-        A 3D numpy array of shape (frames, height, width).
-
-    Returns:
-    --------
-    np.ndarray
-        The registered (aligned) frame stack as a numpy array.
-    """
-
-    reg_method = StackReg.RIGID_BODY
-
-    # 2. Initialize StackReg with the chosen transformation
-    sr = StackReg(reg_method)
-
-    # 3. Perform registration and transformation
-    print(f"Registering {len(frame_stack)} frames using rigid alignment...")
-
-    # uhh i guess take out only the green channel?
-
-    frame_stack = frame_stack[:, :, :, 1]
-
-    registered_stack = sr.register_transform_stack(frame_stack, reference=reference)
-
-    # save_tiff(registered_stack, output_dir, "stackreg")
-
-    return registered_stack
+# def register_frame_stack(
+#         frame_stack: np.ndarray,
+#         output_dir: Path,
+#         reference: str = 'mean') -> np.ndarray:
+#     """
+#     Registers a 3D NumPy array (stack of frames) using pystackreg.
+#     align to mean frame.
+#
+#     Parameters:
+#     -----------
+#     frame_stack : np.ndarray
+#         A 3D numpy array of shape (frames, height, width).
+#
+#     Returns:
+#     --------
+#     np.ndarray
+#         The registered (aligned) frame stack as a numpy array.
+#     """
+#
+#     reg_method = StackReg.RIGID_BODY
+#
+#     # 2. Initialize StackReg with the chosen transformation
+#     sr = StackReg(reg_method)
+#
+#     # 3. Perform registration and transformation
+#     print(f"Registering {len(frame_stack)} frames using rigid alignment...")
+#
+#     # uhh i guess take out only the green channel?
+#
+#     frame_stack = frame_stack[:, :, :, 1]
+#
+#     registered_stack = sr.register_transform_stack(frame_stack, reference=reference)
+#
+#     # save_tiff(registered_stack, output_dir, "stackreg")
+#
+#     return registered_stack
 
 
 def dumb_register(

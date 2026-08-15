@@ -7,7 +7,7 @@
       <excludeFolder url="file://$MODULE_DIR$/CatsEye-Python/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/ML_stuff/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="F:\Code\CatsEye-Python\.venv" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="~\miniconda3\envs\catseye-python" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">

@@ -1,0 +1,36 @@
+name: catseye-python
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  # Python version
+  - python>=3.10
+
+  # Core dependencies
+  - numpy>=2.4.6
+  - pillow>=12.2.0
+  - scipy-stubs~=1.18.0
+
+  # NVIDIA GPU support
+#  - cuda-toolkit::cuda-toolkit=12.1
+#  - cudnn::cudnn
+#  - tensorrt::tensorrt
+
+  # ONNX Runtime with GPU support
+
+  # Development dependencies
+#  - briefcase>=0.4.2
+#  - wxpython>=4.2.5
+#  - pystackreg>=0.2.8
+#  - nuitka>=4.1.3
+
+
+  - pip:
+    - onnxruntime-gpu>=1.28.0
+    - #opencv-contrib-python>=5.0.0
+
+variables:
+  CUDA_HOME: "${CONDA_PREFIX}/pkgs/cuda-toolkit"
+  CUDA_PATH: "${CONDA_PREFIX}/pkgs/cuda-toolkit"
+

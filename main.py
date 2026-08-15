@@ -12,7 +12,7 @@ from CV_steps.Isolate.binary_cleaning import bin_pipeline, data_bin
 from CV_steps.Isolate.pipeline import process_video_ml
 from CV_steps.inclass import ProcessingConfig
 from CV_steps.metrics import print_registration_quality
-from CV_steps.registration import register_frame_stack, dumb_register, ecc_rigid_register
+from CV_steps.registration import dumb_register, ecc_rigid_register
 from CV_steps.render import vid2seg
 from CV_steps.rollingball import process_rolling_ball, process_clahe
 
