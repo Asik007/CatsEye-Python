@@ -53,8 +53,7 @@ VIDEO_FILETYPES = [
 ]
 
 MODEL_FILETYPES = [
-    ("Model files", "*.pt *.onnx"),
-    ("PyTorch model", "*.pt"),
+    ("Model files", "*.onnx"),
     ("ONNX model", "*.onnx"),
     ("All files", "*.*"),
 ]
@@ -62,6 +61,7 @@ MODEL_FILETYPES = [
 # Pulled from ProcessingConfig itself so the GUI default and the pipeline
 # default can never drift out of sync.
 DEFAULT_MODEL_PATH = ProcessingConfig.__dataclass_fields__["model_path"].default
+DEFAULT_VESSEL_MODEL_PATH = ProcessingConfig.__dataclass_fields__["vessel_model_path"].default
 
 
 class VideoProcessorApp:
@@ -173,6 +173,17 @@ class VideoProcessorApp:
         self.model_path_ctrl.grid(row=0, column=0, sticky="ew")
         ttk.Button(model_row, text="Browse…", command=self.on_browse_model).grid(row=0, column=1, padx=(5, 0))
 
+                # Model path -- entry + browse dialog filtered to .pt / .onnx
+        ttk.Label(params_frame, text="Vessel Model path:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=5)
+        model_row = ttk.Frame(params_frame)
+        model_row.grid(row=3, column=1, sticky="ew")
+        model_row.columnconfigure(0, weight=1)
+
+        self.vessel_model_path_var = tk.StringVar(value=DEFAULT_VESSEL_MODEL_PATH)
+        self.model_path_ctrl = ttk.Entry(model_row, textvariable=self.vessel_model_path_var)
+        self.model_path_ctrl.grid(row=0, column=0, sticky="ew")
+        ttk.Button(model_row, text="Browse…", command=self.on_browse_model_vessel).grid(row=0, column=1, padx=(5, 0))
+
     def _build_processing_section(self, parent: ttk.Frame, row: int) -> None:
         processing_frame = ttk.LabelFrame(parent, text="Processing", padding="10")
         processing_frame.grid(row=row, column=0, sticky="ew", pady=(0, 15))
@@ -267,6 +278,17 @@ class VideoProcessorApp:
         if file_path:
             self.model_path_var.set(file_path)
             self.status_text.config(text=f"Model: {Path(file_path).name}")
+
+    def on_browse_model_vessel(self) -> None:
+            """Open a file dialog restricted to common model formats (.pt / .onnx)."""
+            file_path = filedialog.askopenfilename(
+                title="Select model file",
+                filetypes=MODEL_FILETYPES,
+                initialdir="./ML_stuff",
+            )
+            if file_path:
+                self.vessel_model_path_var.set(file_path)
+                self.status_text.config(text=f"Vessel Model: {Path(file_path).name}")
 
     def on_idx_change(self, value: str) -> None:
         """Update the frame index label/preview when the slider moves."""

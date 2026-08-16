@@ -1,86 +1,135 @@
-# CatsEye — Sclera & Vessel Tracking Pipeline
+# CatsEye — Sclera and Vessel Tracking Pipeline
 
-A lightweight computer-vision pipeline for isolating and stabilising the sclera (white of the eye) and extracting vessel / motion outputs from video. The project combines a small ML-based sclera/mask extractor with classical tracking and optical-flow stabilisation to produce visual overlays, masks, and stabilised videos suitable for downstream analysis.
+A computer-vision pipeline for isolating and stabilising the sclera (white of the eye) and extracting vessel / motion outputs from video. The project combines a small ML-based sclera/mask extractor with classical tracking and stabilisation to produce visual overlays, masks, and stabilised videos of blood vessels for downstream analysis.
 
 ## What it does
 - Isolates the sclera region and produces a binary mask and overlay video.
-- Stabilises the extracted sclera frames using optical-flow / homography methods.
-- (Optional) Tracks motion for the selected ROI via cross-correlation (XCorr pipeline).
-- Writes processed video outputs and summary CSVs to timestamped result folders.
+- Stabilises the extracted sclera frames using ECC from OpenCV.
+- Writes processed tiff outputs to timestamped result folders.
 
 ## How it works (high level)
-1. A lightweight ML model (`ML_stuff/best.pt`) segments the sclera and produces a mask and overlay video.
-2. The overlay/mask video is analysed with cross-correlation or feature detection(does not work for the most part, but am trying) to compute frame-to-frame displacements.
-3. The pipeline renders an overlay video and then stabilises frames using estimated motion (want to do translation and rotation but only translation with XCorrelation).
+1. A lightweight ML model (`ML_stuff/exports/model_640_False.onnx`) segments the sclera and produces a mask and overlay video.
+2. The overlay/mask video is analysed with cross-correlation to compute frame-to-frame displacements.
+3. The pipeline renders an overlay video and then stabilises frames using estimated motion.
 4. Outputs (videos and CSVs) are saved under an `output/results_YYYYMMDD-HHMMSS/` directory.
-
+5. Then a FR-UNet model (trained on DCA-1 dataset by the original creators of FR-UNet) isolates the vessels
+6. each vessel is then analyzed and put into the output folder
 ## Repository layout
-- `new_pipeline.py` — Primary combined pipeline and CLI entry point.
-- `guh.py` — Small test script for stabilising mask videos (example / debug).
-- `CV_steps/` — Modular CV functions used by the pipeline:
-	- `sclera_ML.py` — ML-based sclera/mask extraction and overlay rendering.
-	- `Register/XCorr_phase.py` — Phase-based registration and tracking helpers.
-	- `Register/registration.py` — Cross-correlation / homography tracking pipeline.
-	- `Register/stabilize_frame.py` — Video stabilisation utilities.
-	- `Render/render.py` — Video rendering helpers.
-	- `Isolate/Vessel_IP.py` — Classical vessel enhancement utilities.
-	- `Isolate/sclera_IP.py` and `Isolate/sclera_ML.py` — Sclera extraction pipelines.
-- `ML_stuff/` — ML model and helpers (`best.pt` is the trained ultralytics model used by `sclera_ML`).
-- `output/` — Example outputs and previously-run result folders.
 
-## Requirements
-- Python 3.8+ recommended.
-- Key Python packages: `opencv-python`, `numpy`, `matplotlib`, `ultralytics` (for the YOLO model inference).
+- `main.py` — main processing entry point, including `trim_process_stabilize()`
+- `GUI_tk.py` — Tkinter desktop UI for selecting a video, model, and output directory
+- `CLI.py` — lightweight CLI wrapper for running the processing pipeline
+- `pyproject.toml` — project metadata and Python dependencies
+- `CV_steps/` — core processing modules
+  - `inclass.py` — `ProcessingConfig` dataclass
+  - `registration.py` — registration utilities and rigid alignment helpers
+  - `render.py` — rendering and video slicing helpers
+  - `rollingball.py` — rolling-ball / CLAHE preprocessing
+  - `metrics.py` — registration and pipeline metrics
+  - `Helpers/` — crop, I/O, and dataset-related utility functions
+  - `Isolate/` — segmentation and vessel isolation code
+    - `pipeline.py` — ML isolation workflow
+    - `YOLO_infer.py` — YOLO-style inference wrapper
+    - `FRUnet_infer.py` — FR-UNet vessel model wrapper
+    - `binary_cleaning.py` — binary mask cleanup / postprocessing
+- `ML_stuff/` — trained and exported models, including YOLO and ONNX assets
+  - `exports/model_640_False.onnx` is used as a default model path in the current pipeline
+- `output/` — generated results, usually under a timestamped `results_YYYYMMDD-HHMMSS` directory
+- `uploads/` — user video inputs and processing assets
+- `VSX_stuff/` — additional model files and related resources
 
-Example install (recommended in a virtualenv):
+## Quickstart
 
-```bash
-python -m pip install --upgrade pip
-pip install opencv-python numpy matplotlib ultralytics
-```
-
-If you plan to use GPU acceleration for model inference, follow `ultralytics` documentation to install the appropriate CUDA-enabled PyTorch build.
-
-## Quickstart / Usage
-
-1. Place your source video in `uploads/` (or provide any path).
-2. Run the combined pipeline (creates a timestamped results folder under `output/`):
+### Install dependencies
 
 ```bash
-python main.py --video uploads/your_video.mp4 --output output
+uv sync
 ```
 
-Notes:
-- `new_pipeline.py` default behaviour is to run the ML mask/overlay step and then stabilise the overlay video. The script prints the produced file paths (e.g. `sclera_overlay.mp4`, `sclera_mask.mp4`, `stabilized.mp4`).
-- Outputs will be placed in `output/results_YYYYMMDD-HHMMSS/`.
-
-## Debug / Test script
-Use `guh.py` to run a quick test that stabilises a mask video saved under `output/jupyter_test/`.
+Or with plain pip:
 
 ```bash
-python guh.py
+pip install -e .
 ```
 
-This script reads `output/jupyter_test/sclera_mask.mp4` (or adjust the paths inside the file) and writes a `mask_stabilized_test.mp4` file for inspection.
+### Run the GUI
+
+```bash
+python GUI_tk.py
+```
+
+or, in the configured uv environment:
+
+```bash
+uv run GUI_tk.py
+```
+
+# Discalimer
+You need to download ML_stuff and VSX_stuff as they hold the weights for both models.
+
+
+### Run the CLI
+
+```bash
+python CLI.py --video uploads/your_video.mp4 --output output
+```
+
+### Run the processing pipeline directly
+
+`main.py` contains a direct pipeline call using `ProcessingConfig`:
+
+```python
+from CV_steps.inclass import ProcessingConfig
+from main import trim_process_stabilize
+
+config = ProcessingConfig(
+    video_path=r"uploads\IMG_1745.MOV",
+    output_dir=r"output\testing",
+    best_frame=10,
+    model_path=r"ML_stuff\exports\model_640_False.onnx",
+)
+
+trim_process_stabilize(config)
+```
+
+### Build exe with Nuitka
+
+First install nuitka via pip
+
+then run the following command
+
+python -m nuitka GUI_tk.py --mode=standalone --enable-plugin=tk-inter --include-data-dir=./ML_stuff=ML_stuff --include-data-dir=./VSX_stuff=VSX_stuff
+
+
+## Output conventions
+
+The project writes timestamped outputs into directories named like:
+
+```text
+output/results_YYYYMMDD-HHMMSS/
+```
+
+Typical outputs include:
+
+- `sclera_mask.mp4` — binary sclera mask video
+- `sclera_overlay.mp4` — masked/overlay render of the processed video
+- `clahe.tiff` — CLAHE-enhanced stacked image output
+- `reg_stack.tiff` — registered stack
+- `pred_stack.tiff` — FR-UNet prediction stack
+- `bin_stack.tiff` — thresholded / binary vessel output
 
 ## Development notes
-- The pipeline is modular — individual steps in `CV_steps/` can be imported and run separately for debugging.
-- The ML model path is `ML_stuff/best.pt` by default; change paths or `conf/imgsz` parameters in `new_pipeline.py` when needed.
-- Cross-correlation based tracking is implemented in `CV_steps/Register/registration.py` and related helpers under `CV_steps/Register/`.
 
-## Outputs
-- `sclera_overlay.mp4` — original frames with overlay/ROI visuals from the ML step.
-- `sclera_mask.mp4` — binary mask video produced by the ML model.
-- `stabilized.mp4` — result of stabilisation applied to the overlay/mask video.
-- `tracking_results.csv` — (when enabled) per-frame tracking data produced by the XCorr tracking step.
+- The project is structured around `ProcessingConfig`, which centralizes video input, output directory, best-frame selection, and model path.
+- The default model path in the code is currently an ONNX export under `ML_stuff/exports/` rather than the legacy `.pt` model path.
+- Model inference is implemented in `CV_steps/Isolate/YOLO_infer.py` and dispatched via `CV_steps/Isolate/pipeline.py`.
+- FR-UNet vessel extraction is handled separately in `CV_steps/Isolate/FRUnet_infer.py`.
+- The registration and stabilisation pipeline lives primarily in the `CV_steps/` modules and is called from `main.py`.
 
+## Current TODOs
 
+- [x] Move the project tooling to uv
+- [x] Evaluate Nuitka packaging
+- [x] Use ONNX model assets in the current pipeline
+- [ ] Add a Streamlit or browser-based UI
 
-TODO:
-- [X] Change to UV
-- [ ] Make the wx UI elements
-- [ ] Try Nuitka
-- [ ] get rid of ultralytics
-- [ ] figure out how to use an ONNX file
-- [ ] add a streamlit UI
-- [ ] Write the pystack implementation

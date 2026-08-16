@@ -81,7 +81,7 @@ def trim_process_stabilize(config: ProcessingConfig):
     print(f"Registration complete. Saved to {output_dir / 'reg_stack.tiff'}")
 
     print("Isolate Vessels via UNet")
-    FR_net = FRUnet(output_path=output_dir)
+    FR_net = FRUnet(output_path=output_dir, model_path=config.vessel_model_path)
 
     pred_stack = np.zeros([ecc_seg.shape[0],ecc_seg.shape[1], ecc_seg.shape[2]])
     bin_stack = np.zeros([ecc_seg.shape[0],ecc_seg.shape[1], ecc_seg.shape[2]])

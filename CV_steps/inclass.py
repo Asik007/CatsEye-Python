@@ -38,7 +38,8 @@ class ProcessingConfig:
     best_frame: int
     seg_max_len: int = 50
     outlier_std: float = 1.0
-    model_path: str = r"C:\Users\dragon\Code\CatsEye-Python\ML_stuff\best.pt"  # default remains
+    model_path: str = "./ML_stuff/exports/model_640_False.onnx"  # default remains
+    vessel_model_path: str = "./VSX_stuff/model_DCA1.onnx"  # default remains
 
     # All stuff that can be inferred
     sclera_mask_path: Path = "" # except this one can't be None
