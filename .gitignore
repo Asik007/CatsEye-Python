@@ -22,3 +22,4 @@ uploads/IMG_1838.mov
 /__pycache__
 
 ML_stuff/runs/segment/train/weights
+/output
