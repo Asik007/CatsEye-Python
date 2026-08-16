@@ -21,6 +21,4 @@ uploads/IMG_1838.mov
 /.venv
 /__pycache__
 
-/ML_stuff/exports
 ML_stuff/runs/segment/train/weights
-/output/testing
