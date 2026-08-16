@@ -64,8 +64,6 @@ or, in the configured uv environment:
 uv run GUI_tk.py
 ```
 
-# Discalimer
-You need to download ML_stuff and VSX_stuff as they hold the weights for both models.
 
 
 ### Run the CLI
